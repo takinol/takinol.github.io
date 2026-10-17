@@ -10,9 +10,9 @@
 
 export const links = [
   {
-    name: '你的朋友',
-    desc: '这里是朋友的博客，把名字、网址和头像改成他们的。',
-    url: 'https://example.com',
-    avatar: '',
+    name: '小猫',
+    desc: '桃花影落飞神剑',
+    url: 'https://blog.btop251.top/',
+    avatar: '/images/xiaomao.jpg',
   },
 ];
