@@ -3,7 +3,7 @@ import { getCollection, render } from 'astro:content';
 import Post from '../../layouts/Post.astro';
 
 export async function getStaticPaths() {
-  const posts = await getCollection('blog');
+  const posts = (await getCollection('blog')).filter((p) => !p.data.draft);
   return posts.map((post) => ({
     params: { slug: post.id },
     props: { post },
@@ -14,9 +14,9 @@ const { post } = Astro.props;
 const { Content } = await render(post);
 
 // 上一篇 / 下一篇
-const all = (await getCollection('blog')).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
-);
+const all = (await getCollection('blog'))
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 const idx = all.findIndex((p) => p.id === post.id);
 const newer = idx > 0 ? all[idx - 1] : null;
 const older = idx >= 0 && idx < all.length - 1 ? all[idx + 1] : null;

@@ -4,9 +4,9 @@ import Toc from '../components/Toc.astro';
 import { getCollection } from 'astro:content';
 
 // 把全部文章内联进页面，纯前端搜索（适合文章不多的博客）
-const posts = (await getCollection('blog')).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
-);
+const posts = (await getCollection('blog'))
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 const index = posts.map((post) => ({
   title: post.data.title,
   date: post.data.date.toISOString().slice(0, 10),

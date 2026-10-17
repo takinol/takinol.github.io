@@ -3,11 +3,11 @@ import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
 import { site } from '../data/site';
 
-const posts = (await getCollection('blog')).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
-);
-const recent = posts.slice(0, 8);
+const posts = (await getCollection('blog'))
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+const PER_PAGE = 8;
 ---
 
 <Base>
@@ -36,29 +36,73 @@ const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', 
     </div>
   </section>
 
-  <!-- 最近文章 -->
+  <!-- 全部文章（带翻页） -->
   <div class="container">
     <div class="home-posts">
       <section class="section" id="posts">
-        <h2 class="section-title">Posts <span class="section-en">最近文章</span></h2>
+        <h2 class="section-title">Posts <span class="section-en">全部文章</span></h2>
         {
-          recent.length > 0 ? (
-            <ul class="post-list">
-              {recent.map((post) => (
-                <li class="post-item">
-                  <time class="post-date" datetime={post.data.date.toISOString()}>
-                    {fmt.format(post.data.date)}
-                  </time>
-                  <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
-                </li>
-              ))}
-            </ul>
+          posts.length > 0 ? (
+            <>
+              <ul class="post-list" id="home-post-list">
+                {posts.map((post) => (
+                  <li class="post-item">
+                    <time class="post-date" datetime={post.data.date.toISOString()}>
+                      {fmt.format(post.data.date)}
+                    </time>
+                    <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
+                  </li>
+                ))}
+              </ul>
+              <!-- 超过 8 篇才显示翻页器 -->
+              <div class="pager" id="home-pager" hidden={posts.length <= PER_PAGE}>
+                <button class="pager-btn" id="pager-prev" type="button">← 上一页</button>
+                <span class="pager-info" id="pager-info"></span>
+                <button class="pager-btn" id="pager-next" type="button">下一页 →</button>
+              </div>
+            </>
           ) : (
             <p class="post-excerpt">还没有文章，等 takinol 写第一篇吧。</p>
           )
         }
-        <a class="more-link" href="/blog">全部文章 →</a>
       </section>
     </div>
   </div>
+
+  <script>
+    // 首页翻页器：一次显示 8 篇
+    const list = document.getElementById('home-post-list');
+    if (list) {
+      const items = Array.from(list.querySelectorAll('.post-item'));
+      const perPage = 8;
+      const pages = Math.max(1, Math.ceil(items.length / perPage));
+      const info = document.getElementById('pager-info');
+      const prev = document.getElementById('pager-prev');
+      const next = document.getElementById('pager-next');
+      let page = 1;
+
+      function render() {
+        items.forEach((el, i) => {
+          el.style.display = i >= (page - 1) * perPage && i < page * perPage ? '' : 'none';
+        });
+        if (info) info.textContent = `第 ${page} / ${pages} 页`;
+        if (prev) prev.disabled = page <= 1;
+        if (next) next.disabled = page >= pages;
+      }
+
+      prev?.addEventListener('click', () => {
+        if (page > 1) {
+          page--;
+          render();
+        }
+      });
+      next?.addEventListener('click', () => {
+        if (page < pages) {
+          page++;
+          render();
+        }
+      });
+      render();
+    }
+  </script>
 </Base>

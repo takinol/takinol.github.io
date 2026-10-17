@@ -109,6 +109,8 @@ const blog = defineCollection({
     tags: z.array(z.string()).default([]),
     // 文章语言（不写默认中文）
     language: z.string().default('中文'),
+    // 草稿：draft: true 会从网站上「下架」（列表/搜索/RSS 都不显示），但文件保留
+    draft: z.boolean().default(false),
   }),
 });
 

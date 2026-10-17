@@ -2,9 +2,9 @@ import rss from '@astrojs/rss';
 import { getCollection } from 'astro:content';
 import { site } from '../data/site';
 
-const posts = (await getCollection('blog')).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
-);
+const posts = (await getCollection('blog'))
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
 export const prerender = true;
 
