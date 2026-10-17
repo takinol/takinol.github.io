@@ -43,6 +43,6 @@ export const links = [
     name: '磨糖',
     desc: 'cjdsa',
     url: 'https://yinniao23.github.io/Lynn_blog/',
-    avatar: '/images/cjdsa.jpg',
+    avatar: '/images/avatar.jpg',
   },
 ];
