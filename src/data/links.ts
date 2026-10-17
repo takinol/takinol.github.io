@@ -12,7 +12,7 @@ export const links = [
   {
     name: '小猫',
     desc: '桃花影落飞神剑',
-    url: 'https://blog.btop251.top/',
+    url: 'https://takinol.github.io/',
     avatar: '/images/xiaomao.jpg',
   },
 ];

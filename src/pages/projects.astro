@@ -17,7 +17,7 @@ import { projects } from '../data/projects';
           projects.map((project) => (
             <a class="card" href={project.url || undefined} target={project.url ? '_blank' : undefined} rel="noopener">
               <h3>{project.name}</h3>
-              <p>{project.desc}</p>
+              {project.desc && <p>{project.desc}</p>}
             </a>
           ))
         }
