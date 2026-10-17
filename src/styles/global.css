@@ -155,6 +155,13 @@ img {
   background: var(--accent-soft);
 }
 
+/* 搜索 / 主题按钮：桌面端接在导航链接后面，移动端在菜单底部单独一行 */
+.nav-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* 图标按钮（搜索 / 主题切换 / 页脚图标） */
 .icon-btn {
   display: inline-flex;
@@ -223,6 +230,12 @@ html:not([data-theme="dark"]) .icon-sun {
 
   .nav a.nav-link {
     padding: 10px 12px;
+  }
+
+  .nav-tools {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
   }
 
   .nav-toggle {

@@ -45,36 +45,41 @@ const pageDescription = description ?? site.description;
               <a class="nav-link" href={item.href}>{item.label}</a>
             ))
           }
-          <a class="icon-btn" href="/search" aria-label="搜索" title="搜索">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </a>
-          <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="菜单" aria-expanded="false">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="4" y1="7" x2="20" y2="7"></line>
-              <line x1="4" y1="12" x2="20" y2="12"></line>
-              <line x1="4" y1="17" x2="20" y2="17"></line>
-            </svg>
-          </button>
-          <button class="icon-btn" id="theme-toggle" aria-label="切换主题" title="切换主题">
-            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-            </svg>
-            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="4"></circle>
-              <line x1="12" y1="2" x2="12" y2="5"></line>
-              <line x1="12" y1="19" x2="12" y2="22"></line>
-              <line x1="2" y1="12" x2="5" y2="12"></line>
-              <line x1="19" y1="12" x2="22" y2="12"></line>
-              <line x1="4.9" y1="4.9" x2="6.3" y2="6.3"></line>
-              <line x1="17.7" y1="17.7" x2="19.1" y2="19.1"></line>
-              <line x1="4.9" y1="19.1" x2="6.3" y2="17.7"></line>
-              <line x1="17.7" y1="6.3" x2="19.1" y2="4.9"></line>
-            </svg>
-          </button>
+          <div class="nav-tools">
+            <a class="icon-btn" href="/search" aria-label="搜索" title="搜索">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </a>
+            <button class="icon-btn" id="theme-toggle" aria-label="切换主题" title="切换主题">
+              <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+              </svg>
+              <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"></circle>
+                <line x1="12" y1="2" x2="12" y2="5"></line>
+                <line x1="12" y1="19" x2="12" y2="22"></line>
+                <line x1="2" y1="12" x2="5" y2="12"></line>
+                <line x1="19" y1="12" x2="22" y2="12"></line>
+                <line x1="4.9" y1="4.9" x2="6.3" y2="6.3"></line>
+                <line x1="17.7" y1="17.7" x2="19.1" y2="19.1"></line>
+                <line x1="4.9" y1="19.1" x2="6.3" y2="17.7"></line>
+                <line x1="17.7" y1="6.3" x2="19.1" y2="4.9"></line>
+              </svg>
+            </button>
+          </div>
         </nav>
+
+        <!-- 汉堡按钮必须放在 <nav> 外面：移动端 nav 整块是隐藏的浮层，
+             放里面会跟着一起被藏起来，导致菜单永远打不开 -->
+        <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="菜单" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="17" x2="20" y2="17"></line>
+          </svg>
+        </button>
       </div>
     </header>
 
