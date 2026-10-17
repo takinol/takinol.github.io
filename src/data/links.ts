@@ -37,12 +37,18 @@ export const links = [
     name: 'Ray',
     desc: '好GG',
     url: 'https://ruijian-huang.github.io/',
-    avatar: '/images/rjgg.jpg',
+    avatar: '/images/zi.jpg',
   },
     {
     name: '磨糖',
     desc: 'cjdsa',
     url: 'https://yinniao23.github.io/Lynn_blog/',
     avatar: '/images/avatar.jpg',
+  },
+    {
+    name: 'HinanawiTeriko',
+    desc: '天子',
+    url: 'https://hinanawiteriko.github.io/',
+    avatar: '/images/tianzi.jpg',
   },
 ];
