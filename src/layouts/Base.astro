@@ -21,12 +21,13 @@ const pageDescription = description ?? site.description;
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="alternate" type="application/rss+xml" title={site.name} href="/rss.xml" />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
-    <!-- 主题初始化：防止刷新时闪一下浅色 -->
+    <!-- 主题初始化：默认浅色，只有存过“dark”才进深色（防止刷新闪一下） -->
     <script is:inline>
       (function () {
         try {
-          var t = localStorage.getItem('theme');
-          if (t) document.documentElement.setAttribute('data-theme', t);
+          if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
         } catch (e) {}
       })();
     </script>
@@ -108,11 +109,11 @@ const pageDescription = description ?? site.description;
     </footer>
 
     <script>
-      // 主题切换
+      // 主题切换（默认浅色；点一下变深色，再点回浅色）
       const toggle = document.getElementById('theme-toggle');
       toggle?.addEventListener('click', () => {
         const html = document.documentElement;
-        const next = html.getAttribute('data-theme') === 'light' ? '' : 'light';
+        const next = html.getAttribute('data-theme') === 'dark' ? '' : 'dark';
         if (next) {
           html.setAttribute('data-theme', next);
         } else {

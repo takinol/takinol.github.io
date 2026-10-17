@@ -4,38 +4,8 @@
    想改颜色 / 字体，改下面 :root 和 [data-theme="light"] 里的变量即可
    ============================================================ */
 
-/* ---------- 设计变量（默认 = 深色主题） ---------- */
+/* ---------- 设计变量（默认 = 浅色主题） ---------- */
 :root {
-  --bg: #0b0b0f;
-  --bg-soft: #101016;
-  --bg-elevated: #15151c;
-  --text: #e9e9ec;
-  --text-muted: #9b9ba6;
-  --text-faint: #6e6e79;
-  --border: rgba(255, 255, 255, 0.08);
-  --accent: #8ab4f8;
-  --accent-soft: rgba(138, 180, 248, 0.14);
-  --code-bg: rgba(255, 255, 255, 0.06);
-  --selection: rgba(138, 180, 248, 0.28);
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "Noto Serif SC",
-    "Source Han Serif SC", "Songti SC", SimSun, serif;
-  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas,
-    "Courier New", monospace;
-
-  --maxw: 1040px;
-  --radius: 12px;
-
-  /* 蓝白渐变背景（参考 arthals.ink 顶部光晕） */
-  --bg-top: #131a36; /* 深色模式下页面顶部的蓝色 */
-  --bg-glow: rgba(96, 150, 255, 0.16); /* 顶部蓝色光晕 */
-}
-
-/* 浅色主题：给 <html> 加 data-theme="light" 时生效 */
-html[data-theme="light"] {
   --bg: #fbfaf8;
   --bg-soft: #f3f1ed;
   --bg-elevated: #ffffff;
@@ -49,9 +19,39 @@ html[data-theme="light"] {
   --selection: rgba(26, 95, 180, 0.2);
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
 
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "Noto Serif SC",
+    "Source Han Serif SC", "Songti SC", SimSun, serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas,
+    "Courier New", monospace;
+
+  --maxw: 1040px;
+  --radius: 12px;
+
   /* 蓝白渐变背景：浅色模式下是“蓝 → 白” */
   --bg-top: #dceaff;
   --bg-glow: rgba(96, 160, 255, 0.4);
+}
+
+/* 深色主题：给 <html> 加 data-theme="dark" 时生效 */
+html[data-theme="dark"] {
+  --bg: #0b0b0f;
+  --bg-soft: #101016;
+  --bg-elevated: #15151c;
+  --text: #e9e9ec;
+  --text-muted: #9b9ba6;
+  --text-faint: #6e6e79;
+  --border: rgba(255, 255, 255, 0.08);
+  --accent: #8ab4f8;
+  --accent-soft: rgba(138, 180, 248, 0.14);
+  --code-bg: rgba(255, 255, 255, 0.06);
+  --selection: rgba(138, 180, 248, 0.28);
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+
+  /* 蓝白渐变背景：深色模式下是“深蓝 → 深色” */
+  --bg-top: #131a36;
+  --bg-glow: rgba(96, 150, 255, 0.16);
 }
 
 /* ---------- 基础 ---------- */
@@ -181,12 +181,12 @@ img {
   height: 19px;
 }
 
-/* 主题切换图标：深色模式下显示“月亮”(点击去浅色) */
-html[data-theme="light"] .icon-sun {
+/* 主题切换图标：默认浅色显示“月亮”(点击去深色)；深色显示“太阳”(点击回浅色) */
+html[data-theme="dark"] .icon-moon {
   display: none;
 }
 
-html:not([data-theme="light"]) .icon-moon {
+html:not([data-theme="dark"]) .icon-sun {
   display: none;
 }
 
@@ -562,6 +562,19 @@ html:not([data-theme="light"]) .icon-moon {
 .page-head p {
   color: var(--text-muted);
   margin: 0;
+}
+
+/* ---------- About 欢迎语 ---------- */
+.about-welcome {
+  max-width: 720px;
+  text-align: center;
+  padding-top: 24px;
+}
+
+.about-welcome p {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  color: var(--text-muted);
 }
 
 /* ---------- 项目卡片 ---------- */
