@@ -57,8 +57,6 @@ npm run build  # 构建出 dist/ 文件夹
 | 想改的东西 | 文件 |
 |---|---|
 | 名字 / 简介 / 邮箱 / GitHub 链接 | `src/data/site.ts` |
-| 教育经历 | `src/data/education.ts` |
-| 技能标签 | `src/data/skills.ts` |
 | 项目页内容 | `src/data/projects.ts` |
 | 友链页内容 | `src/data/links.ts` |
 | 颜色 / 字体 / 主题 | `src/styles/global.css` 顶部的变量 |

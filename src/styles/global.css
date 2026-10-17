@@ -298,23 +298,6 @@ html:not([data-theme="dark"]) .icon-sun {
   text-align: center;
 }
 
-.avatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  margin: 0 auto 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-size: 44px;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, #6a8cff, #9a6aff 55%, #e06b9a);
-  box-shadow: 0 8px 28px rgba(106, 140, 255, 0.35);
-  user-select: none;
-}
-
 .hero h1 {
   font-family: var(--font-serif);
   font-size: 44px;
@@ -391,12 +374,6 @@ html:not([data-theme="dark"]) .icon-sun {
   margin: 2px 0 0;
 }
 
-.more-link {
-  display: inline-block;
-  margin-top: 18px;
-  font-size: 15px;
-}
-
 /* 首页文章列表：窄一点、居中，避免撑得太宽 */
 .home-posts {
   max-width: 820px;
@@ -465,10 +442,6 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--text-faint);
 }
 
-.post-card .pc-meta .pc-updated {
-  color: var(--text-faint);
-}
-
 .post-card .pc-meta .pc-sep {
   opacity: 0.5;
 }
@@ -508,92 +481,6 @@ html:not([data-theme="dark"]) .icon-sun {
   background: var(--accent-soft);
   border-radius: 999px;
   padding: 2px 10px;
-}
-
-/* ---------- 教育经历 ---------- */
-.timeline {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 18px;
-  border-left: 1px solid var(--border);
-}
-
-.timeline li {
-  position: relative;
-  padding: 0 0 26px 22px;
-}
-
-.timeline li::before {
-  content: "";
-  position: absolute;
-  left: -5px;
-  top: 8px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.timeline .tl-school {
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.timeline .tl-period {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-faint);
-  margin-left: 8px;
-}
-
-.timeline .tl-degree {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-top: 2px;
-}
-
-.timeline .tl-note {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-/* ---------- 技能 ---------- */
-.skills-group {
-  margin-bottom: 18px;
-}
-
-.skills-group h3 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 10px;
-}
-
-.skill-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.skill-chip {
-  font-size: 14px;
-  color: var(--text-muted);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 14px;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.skill-chip:hover {
-  color: var(--text);
-  border-color: var(--accent);
 }
 
 /* ---------- 页面头部（内页用） ---------- */

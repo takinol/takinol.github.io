@@ -9,8 +9,6 @@ export const site = {
   titleSuffix: 'takinol',
   // 页面描述（SEO）
   description: '我是小猫，这里是 takinol 的博客。',
-  // 头像：字母 + 渐变，改成你自己的名字首字母
-  avatarLetter: 'T',
   // 所在地（可选，不需要就留空字符串）
   location: '',
   // 你的链接
