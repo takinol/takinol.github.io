@@ -1,5 +1,6 @@
 ---
 import Base from './Base.astro';
+import Toc from '../components/Toc.astro';
 import { site } from '../data/site';
 interface Props {
   title: string;
@@ -16,8 +17,8 @@ const fmt = new Intl.DateTimeFormat('zh-CN', {
 ---
 
 <Base title={title} description={description}>
-  <article class="post-article">
-    <div class="container">
+  <div class="container page-wrap">
+    <article class="toc-content post-article">
       <a class="back-link" href="/blog">← 返回文章列表</a>
       <h1>{title}</h1>
       <div class="post-meta">
@@ -29,6 +30,9 @@ const fmt = new Intl.DateTimeFormat('zh-CN', {
       <div class="prose">
         <slot />
       </div>
-    </div>
-  </article>
+    </article>
+    <aside class="toc-col">
+      <Toc />
+    </aside>
+  </div>
 </Base>

@@ -1,5 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
+import Toc from '../../components/Toc.astro';
 import { getCollection } from 'astro:content';
 
 const posts = (await getCollection('blog')).sort(
@@ -9,30 +10,35 @@ const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', d
 ---
 
 <Base title="Blog" description="全部文章列表">
-  <div class="container">
-    <header class="page-head">
-      <h1>Blog</h1>
-      <p>全部文章，共 {posts.length} 篇。</p>
-    </header>
+  <div class="container page-wrap">
+    <article class="toc-content">
+      <header class="page-head">
+        <h1>Blog</h1>
+        <p>全部文章，共 {posts.length} 篇。</p>
+      </header>
 
-    {
-      posts.length > 0 ? (
-        <ul class="post-list" style="margin-top: 36px">
-          {posts.map((post) => (
-            <li class="post-item">
-              <time class="post-date" datetime={post.data.date.toISOString()}>
-                {fmt.format(post.data.date)}
-              </time>
-              <div>
-                <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
-                {post.data.description && <p class="post-excerpt">{post.data.description}</p>}
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p style="margin-top: 40px; color: var(--text-muted)">还没有文章。</p>
-      )
-    }
+      {
+        posts.length > 0 ? (
+          <ul class="post-list" style="margin-top: 36px">
+            {posts.map((post) => (
+              <li class="post-item">
+                <time class="post-date" datetime={post.data.date.toISOString()}>
+                  {fmt.format(post.data.date)}
+                </time>
+                <div>
+                  <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
+                  {post.data.description && <p class="post-excerpt">{post.data.description}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style="margin-top: 40px; color: var(--text-muted)">还没有文章。</p>
+        )
+      }
+    </article>
+    <aside class="toc-col">
+      <Toc />
+    </aside>
   </div>
 </Base>

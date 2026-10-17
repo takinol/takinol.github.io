@@ -1,0 +1,90 @@
+---
+// 右侧目录：自动扫描 .toc-content 里的 h2~h6 生成嵌套目录 + 滚动高亮
+// 实现思路参考 arthals.ink（astro-pure 的 TOC 组件）：
+// 用「栈」把扁平标题整理成 h2→h3→h4 的嵌套树，再滚动时高亮当前章节。
+---
+<nav class="toc" id="page-toc" aria-label="目录">
+  <p class="toc-title">目录</p>
+  <ul id="page-toc-list"></ul>
+</nav>
+
+<script>
+  const nav = document.getElementById('page-toc');
+  const list = document.getElementById('page-toc-list');
+  const scope = document.querySelector('.toc-content');
+
+  if (!nav || !list || !scope) {
+    nav?.style.setProperty('display', 'none');
+  } else {
+    const heads = Array.from(
+      scope.querySelectorAll('h2[id], h3[id], h4[id], h5[id], h6[id]')
+    );
+
+    // 标题太少就不显示目录（但右侧位置仍被 .toc-col 留出）
+    if (heads.length < 2) {
+      nav.style.display = 'none';
+    } else {
+      // 1) 把扁平标题整理成嵌套树
+      const tree = [];
+      const stack = [{ depth: 0, children: tree }];
+      heads.forEach((h) => {
+        const node = {
+          depth: Number(h.tagName[1]),
+          id: h.id,
+          text: h.textContent.replace(/\s+/g, ' ').trim(),
+          children: [],
+        };
+        while (stack[stack.length - 1].depth >= node.depth) stack.pop();
+        stack[stack.length - 1].children.push(node);
+        stack.push(node);
+      });
+
+      // 2) 递归渲染 <ul><li><a>
+      const renderUl = (nodes) => {
+        const ul = document.createElement('ul');
+        nodes.forEach((n) => {
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.href = '#' + n.id;
+          a.textContent = n.text;
+          a.dataset.slug = n.id;
+          li.appendChild(a);
+          if (n.children.length) li.appendChild(renderUl(n.children));
+          ul.appendChild(li);
+        });
+        return ul;
+      };
+      list.appendChild(renderUl(tree));
+      const links = Array.from(list.querySelectorAll('a'));
+
+      // 3) 滚动时高亮当前阅读到的章节
+      let active = null;
+      const setActive = (id) => {
+        if (id === active) return;
+        active = id;
+        links.forEach((a) => a.classList.toggle('active', a.dataset.slug === id));
+      };
+      const onScroll = () => {
+        const offset = 120;
+        let current = heads[0];
+        heads.forEach((h) => {
+          if (h.getBoundingClientRect().top <= offset) current = h;
+        });
+        setActive(current.id);
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      // 4) 点击目录：平滑滚动 + 更新地址栏 hash
+      links.forEach((a) => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          const target = document.getElementById(a.dataset.slug);
+          if (!target) return;
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#' + a.dataset.slug);
+        });
+      });
+    }
+  }
+</script>

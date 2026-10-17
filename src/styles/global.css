@@ -26,8 +26,12 @@
   --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas,
     "Courier New", monospace;
 
-  --maxw: 720px;
+  --maxw: 1040px;
   --radius: 12px;
+
+  /* 蓝白渐变背景（参考 arthals.ink 顶部光晕） */
+  --bg-top: #131a36; /* 深色模式下页面顶部的蓝色 */
+  --bg-glow: rgba(96, 150, 255, 0.16); /* 顶部蓝色光晕 */
 }
 
 /* 浅色主题：给 <html> 加 data-theme="light" 时生效 */
@@ -44,6 +48,10 @@ html[data-theme="light"] {
   --code-bg: rgba(0, 0, 0, 0.05);
   --selection: rgba(26, 95, 180, 0.2);
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+
+  /* 蓝白渐变背景：浅色模式下是“蓝 → 白” */
+  --bg-top: #dceaff;
+  --bg-glow: rgba(96, 160, 255, 0.4);
 }
 
 /* ---------- 基础 ---------- */
@@ -57,7 +65,15 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: radial-gradient(
+      1100px 520px at 50% -120px,
+      var(--bg-glow),
+      transparent 70%
+    ),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 55%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -292,6 +308,18 @@ html:not([data-theme="light"]) .icon-moon {
   font-weight: 700;
   margin: 0 0 8px;
   letter-spacing: 0.01em;
+}
+
+/* 头像照片（圆形裁剪） */
+.avatar-img {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  box-shadow: 0 8px 28px rgba(96, 150, 255, 0.35);
+  margin: 0 auto 20px;
+  display: block;
 }
 
 .hero .hero-tagline {
@@ -724,6 +752,88 @@ html:not([data-theme="light"]) .icon-moon {
 
 .notfound p {
   color: var(--text-muted);
+}
+
+/* ---------- 两栏布局 + 右侧目录（参考 arthals.ink） ---------- */
+.page-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 236px;
+  gap: 48px;
+  align-items: start;
+}
+
+.toc-content {
+  min-width: 0;
+}
+
+.toc-col {
+  position: sticky;
+  top: 84px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  padding-top: 8px;
+}
+
+.toc {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.toc .toc-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+
+.toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc ul ul {
+  margin-left: 14px;
+}
+
+.toc a {
+  display: block;
+  color: var(--text-faint);
+  padding: 3px 10px;
+  border-left: 2px solid transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.toc a:hover {
+  color: var(--text);
+}
+
+.toc a.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+/* 点目录锚点跳转时，标题不要被吸顶导航栏挡住 */
+.toc-content h2,
+.toc-content h3,
+.toc-content h4,
+.toc-content h5,
+.toc-content h6 {
+  scroll-margin-top: 92px;
+}
+
+@media (max-width: 920px) {
+  .page-wrap {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .toc-col {
+    display: none;
+  }
 }
 
 /* ---------- 响应式微调 ---------- */

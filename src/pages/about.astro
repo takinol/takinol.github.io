@@ -1,60 +1,68 @@
 ---
 import Base from '../layouts/Base.astro';
+import Toc from '../components/Toc.astro';
 import { site } from '../data/site';
 import { education } from '../data/education';
 import { skills } from '../data/skills';
 ---
 
 <Base title="About" description="关于我">
-  <div class="container">
-    <header class="page-head" style="text-align: center">
-      <div class="avatar" aria-hidden="true" style="margin-bottom: 20px">{site.avatarLetter}</div>
+  <header class="page-head">
+    <div class="container" style="text-align: center">
+      <img class="avatar-img" src="/avatar.jpg" alt={site.name} />
       <h1>{site.name}</h1>
       <p>{site.tagline}</p>
-    </header>
+    </div>
+  </header>
 
-    <section class="section">
-      <h2 class="section-title">About <span class="section-en">关于我</span></h2>
-      <p>我是小猫。</p>
-      <p>
-        这里是 takinol 的个人博客，用来记录学习和生活。网站是用
-        <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>
-        从零搭建的，部署在免费的
-        <a href="https://pages.github.com" target="_blank" rel="noopener">GitHub Pages</a>
-        上，没有购买域名，用的是 GitHub 送的 <code>takinol.github.io</code>。
-      </p>
-      <p>
-        想联系我，可以发邮件到
-        <a href={site.links.email}>835648821@qq.com</a>，或者在
-        <a href={site.links.github} target="_blank" rel="noopener">GitHub</a>
-        上找我。
-      </p>
-    </section>
+  <div class="container page-wrap">
+    <article class="toc-content">
+      <section class="section" id="about">
+        <h2 class="section-title">About <span class="section-en">关于我</span></h2>
+        <p>我是小猫。</p>
+        <p>
+          这里是 takinol 的个人博客，用来记录学习和生活。网站是用
+          <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>
+          从零搭建的，部署在免费的
+          <a href="https://pages.github.com" target="_blank" rel="noopener">GitHub Pages</a>
+          上，没有购买域名，用的是 GitHub 送的 <code>takinol.github.io</code>。
+        </p>
+        <p>
+          想联系我，可以发邮件到
+          <a href={site.links.email}>835648821@qq.com</a>，或者在
+          <a href={site.links.github} target="_blank" rel="noopener">GitHub</a>
+          上找我。
+        </p>
+      </section>
 
-    <section class="section">
-      <h2 class="section-title">Education <span class="section-en">教育经历</span></h2>
-      <ul class="timeline">
-        {education.map((item) => (
-          <li>
-            <span class="tl-school">{item.school}</span>
-            <span class="tl-period">{item.period}</span>
-            <div class="tl-degree">{item.degree}</div>
-            {item.note && <div class="tl-note">{item.note}</div>}
-          </li>
-        ))}
-      </ul>
-    </section>
+      <section class="section" id="education">
+        <h2 class="section-title">Education <span class="section-en">教育经历</span></h2>
+        <ul class="timeline">
+          {education.map((item) => (
+            <li>
+              <span class="tl-school">{item.school}</span>
+              <span class="tl-period">{item.period}</span>
+              <div class="tl-degree">{item.degree}</div>
+              {item.note && <div class="tl-note">{item.note}</div>}
+            </li>
+          ))}
+        </ul>
+      </section>
 
-    <section class="section">
-      <h2 class="section-title">Skills <span class="section-en">技能</span></h2>
-      {skills.map((group) => (
-        <div class="skills-group">
-          <h3>{group.group}</h3>
-          <div class="skill-chips">
-            {group.items.map((item) => <span class="skill-chip">{item}</span>)}
+      <section class="section" id="skills">
+        <h2 class="section-title">Skills <span class="section-en">技能</span></h2>
+        {skills.map((group) => (
+          <div class="skills-group">
+            <h3>{group.group}</h3>
+            <div class="skill-chips">
+              {group.items.map((item) => <span class="skill-chip">{item}</span>)}
+            </div>
           </div>
-        </div>
-      ))}
-    </section>
+        ))}
+      </section>
+    </article>
+    <aside class="toc-col">
+      <Toc />
+    </aside>
   </div>
 </Base>

@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import Toc from '../components/Toc.astro';
 import { getCollection } from 'astro:content';
 
 // 把全部文章内联进页面，纯前端搜索（适合文章不多的博客）
@@ -16,25 +17,30 @@ const index = posts.map((post) => ({
 ---
 
 <Base title="Search" description="站内搜索">
-  <div class="container">
-    <header class="page-head">
-      <h1>Search</h1>
-      <p>搜索站内文章。</p>
-    </header>
+  <div class="container page-wrap">
+    <article class="toc-content">
+      <header class="page-head">
+        <h1>Search</h1>
+        <p>搜索站内文章。</p>
+      </header>
 
-    <div class="search-box">
-      <input
-        class="search-input"
-        id="search-input"
-        type="search"
-        placeholder="输入关键词，比如：博客、Astro……"
-        autocomplete="off"
-      />
-      <p class="search-hint">共 {index.length} 篇文章。支持标题、简介和标签匹配。</p>
-    </div>
+      <div class="search-box">
+        <input
+          class="search-input"
+          id="search-input"
+          type="search"
+          placeholder="输入关键词，比如：博客、Astro……"
+          autocomplete="off"
+        />
+        <p class="search-hint">共 {index.length} 篇文章。支持标题、简介和标签匹配。</p>
+      </div>
 
-    <div class="search-results" id="search-results"></div>
-    <p class="search-empty" id="search-empty" style="display: none">没有找到相关文章。</p>
+      <div class="search-results" id="search-results"></div>
+      <p class="search-empty" id="search-empty" style="display: none">没有找到相关文章。</p>
+    </article>
+    <aside class="toc-col">
+      <Toc />
+    </aside>
   </div>
 
   <script>
