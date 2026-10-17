@@ -3,9 +3,10 @@
 //   name   —— 朋友的名字
 //   desc   —— 一句话介绍
 //   url    —— 对方的网站
-//   avatar —— 对方头像图片（可选）。
-//            把头像图片放进 public/images/ 文件夹，
-//            这里填 /images/图片文件名（比如 /images/friend.png）
+//   avatar —— 对方头像（可选），两种写法都行：
+//              1) 本地图片：放进 public/images/，这里填 /images/文件名.png
+//              2) 对方的图片网址：https://对方的域名/avatar.png
+//            没填、或者图片加载失败时，卡片会显示名字的第一个字。
 // 想加几个就复制几组，逗号隔开。
 
 export const links = [
@@ -37,7 +38,7 @@ export const links = [
     name: 'Ray',
     desc: '好GG',
     url: 'https://ruijian-huang.github.io/',
-    avatar: '/images/zi.jpg',
+    avatar: '/images/rjgg.jpg',
   },
     {
     name: '磨糖',

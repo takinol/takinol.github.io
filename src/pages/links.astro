@@ -12,13 +12,44 @@ import { links } from '../data/links';
         <p>朋友们的小站。</p>
       </header>
 
-      <div class="card-grid">
+      <div class="link-grid">
         {
           links.map((link) => (
-            <a class="card" href={link.url} target="_blank" rel="noopener">
-              {link.avatar && <img class="card-avatar" src={link.avatar} alt={link.name} />}
-              <h3>{link.name}</h3>
-              <p>{link.desc}</p>
+            <a class="link-card" href={link.url} target="_blank" rel="noopener">
+              <span class="link-avatar">
+                <span class="link-avatar-fallback" aria-hidden="true">
+                  {Array.from(link.name)[0]}
+                </span>
+                {link.avatar && (
+                  <img
+                    src={link.avatar}
+                    alt=""
+                    width="46"
+                    height="46"
+                    loading="lazy"
+                    decoding="async"
+                    onerror="this.remove()"
+                  />
+                )}
+              </span>
+              <span class="link-body">
+                <span class="link-name">{link.name}</span>
+                {link.desc && <span class="link-desc">{link.desc}</span>}
+              </span>
+              <svg
+                class="link-arrow"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="7" y1="17" x2="17" y2="7"></line>
+                <polyline points="7 7 17 7 17 17"></polyline>
+              </svg>
             </a>
           ))
         }
