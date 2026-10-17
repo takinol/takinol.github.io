@@ -90,6 +90,6 @@ const index = posts.map((post) => ({
     input.addEventListener('input', () => render(input.value));
   </script>
 
-  <!-- 文章数据：用 JSON 传给上面的脚本 -->
-  <script id="search-data" type="application/json" set:html={JSON.stringify(index)} />
+  <!-- 文章数据：用 JSON 传给上面的脚本（把 < 转义掉，防止标题里出现 </script> 把页面截断） -->
+  <script id="search-data" type="application/json" set:html={JSON.stringify(index).replace(/</g, '\\u003c')} />
 </Base>

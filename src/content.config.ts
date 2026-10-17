@@ -31,11 +31,24 @@ function parseFrontmatter(source: string): {
   for (const line of fm.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const kv = /^([A-Za-z0-9_]+):\s*(.*)$/.exec(trimmed);
+    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(trimmed);
     if (kv) {
       currentKey = kv[1];
       const value = kv[2].trim();
-      data[currentKey] = value === '' ? [] : parseScalar(value);
+      if (value === '') {
+        data[currentKey] = [];
+      } else if (value.startsWith('[') && value.endsWith(']')) {
+        // 支持 Obsidian 默认的 tags: [a, b] 行内数组写法
+        const inner = value.slice(1, -1).trim();
+        data[currentKey] = inner
+          ? inner
+              .split(',')
+              .map((s) => parseScalar(s))
+              .filter((s) => s !== '')
+          : [];
+      } else {
+        data[currentKey] = parseScalar(value);
+      }
     } else if (currentKey && trimmed.startsWith('- ')) {
       const list = (data[currentKey] ??= []) as unknown[];
       list.push(parseScalar(trimmed.slice(2)));
@@ -48,7 +61,6 @@ const markdownLoader = {
   name: 'markdown-loader',
   load: async (context: any) => {
     const { store, parseData, renderMarkdown, generateDigest, config, logger } = context;
-    // 每次构建先清空内容仓库：否则删掉的文章会残留在缓存里继续显示
     // 每次构建先清空内容仓库：否则删掉的文章会残留在缓存里继续显示
     store.clear();
     const dir = new URL('./content/blog/', config.srcDir);
