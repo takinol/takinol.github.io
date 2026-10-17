@@ -503,7 +503,8 @@ if ($NoCommit) {
                 if ($LASTEXITCODE -eq 0) {
                     Write-Note "内容没有变化，不需要提交。"
                 } else {
-                    git commit -m "上传文章：$title" *> $null
+                    # 只提交这次涉及的文件，别把别的改动一起带进去
+                    git commit -m "上传文章：$title" -- $paths *> $null
                     if ($LASTEXITCODE -eq 0) {
                         $commitHash = (git rev-parse --short HEAD)
                         Write-Ok "已提交：$commitHash  上传文章：$title"
