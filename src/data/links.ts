@@ -21,4 +21,16 @@ export const links = [
     url: 'decimo.top',
     avatar: '/images/democi.jpg',
   },
+    {
+    name: 'btop251',
+    desc: '甜美的晓堃',
+    url: 'https://blog.btop251.top/',
+    avatar: '/images/btop251.jpg',
+  },
+    {
+    name: 'dxfaker',
+    desc: '未曾谋面的飞科',
+    url: 'https://dxfaker.top/',
+    avatar: '/images/dxfaker.jpg',
+  },
 ];
