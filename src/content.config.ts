@@ -48,6 +48,9 @@ const markdownLoader = {
   name: 'markdown-loader',
   load: async (context: any) => {
     const { store, parseData, renderMarkdown, generateDigest, config, logger } = context;
+    // 每次构建先清空内容仓库：否则删掉的文章会残留在缓存里继续显示
+    // 每次构建先清空内容仓库：否则删掉的文章会残留在缓存里继续显示
+    store.clear();
     const dir = new URL('./content/blog/', config.srcDir);
     const dirPath = fileURLToPath(dir);
     const rootPath = fileURLToPath(config.root);
