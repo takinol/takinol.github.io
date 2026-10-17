@@ -65,7 +65,14 @@ const markdownLoader = {
       }
       const { data: frontmatter, body } = parseFrontmatter(raw);
       const id = file.replace(/\.md$/, '');
-      const parsedData = await parseData({ id, data: frontmatter as any, filePath });
+      let parsedData: any;
+      try {
+        parsedData = await parseData({ id, data: frontmatter as any, filePath });
+      } catch (error) {
+        // 某一篇格式坏了只跳过这一篇，不让整个网站构建失败
+        logger.error(`[跳过] ${file} 的 frontmatter 格式有误：${(error as Error).message}`);
+        continue;
+      }
       let rendered: any;
       try {
         rendered = await renderMarkdown(body, { fileURL: fileUrl });
