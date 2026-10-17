@@ -716,6 +716,27 @@ html:not([data-theme="dark"]) .icon-sun {
   margin: 32px 0 10px;
 }
 
+.prose h4 {
+  font-size: 17px;
+  margin: 28px 0 10px;
+  font-weight: 700;
+}
+
+.prose h5 {
+  font-size: 16px;
+  margin: 24px 0 8px;
+  font-weight: 700;
+}
+
+.prose h6 {
+  font-size: 14px;
+  margin: 20px 0 6px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .prose p {
   margin: 0 0 18px;
 }
@@ -760,17 +781,36 @@ html:not([data-theme="dark"]) .icon-sun {
 .prose pre {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   padding: 18px 20px;
   overflow-x: auto;
-  margin: 0 0 18px;
-  line-height: 1.6;
+  margin: 0 0 20px;
+  line-height: 1.65;
+  font-size: 13.5px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
 .prose pre code {
   background: none;
   padding: 0;
-  font-size: 14px;
+  font-size: 13.5px;
+}
+
+/* 代码块右上角的语言小标签 */
+.prose pre::after {
+  content: attr(data-language);
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(225, 228, 232, 0.45);
+  text-transform: lowercase;
+  pointer-events: none;
+}
+
+.prose pre {
+  position: relative;
 }
 
 .prose table {
@@ -791,8 +831,35 @@ html:not([data-theme="dark"]) .icon-sun {
   background: var(--bg-soft);
 }
 
+.prose tbody tr:nth-child(even) {
+  background: var(--bg-soft);
+}
+
+.prose tbody tr:hover {
+  background: var(--accent-soft);
+}
+
+.prose strong {
+  font-weight: 700;
+}
+
 .prose img {
-  border-radius: var(--radius);
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px auto 22px;
+  border-radius: 10px;
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* 只有图片的段落：整体居中 */
+.prose p:has(> img) {
+  text-align: center;
+}
+
+.prose p img {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .prose hr {
