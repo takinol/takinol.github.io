@@ -15,4 +15,10 @@ export const links = [
     url: 'https://takinol.github.io/',
     avatar: '/images/xiaomao.jpg',
   },
+    {
+    name: '光风',
+    desc: '大手子',
+    url: 'decimo.top',
+    avatar: '/images/democi.jpg',
+  },
 ];
