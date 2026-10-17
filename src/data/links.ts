@@ -1,10 +1,18 @@
 // 友情链接（/links 页面）
-// 每项：名字 / 一句话介绍 / 网址
+// 每项：
+//   name   —— 朋友的名字
+//   desc   —— 一句话介绍
+//   url    —— 对方的网站
+//   avatar —— 对方头像图片（可选）。
+//            把头像图片放进 public/images/ 文件夹，
+//            这里填 /images/图片文件名（比如 /images/friend.png）
+// 想加几个就复制几组，逗号隔开。
 
 export const links = [
   {
     name: '你的朋友',
-    desc: '这里是朋友的博客，把名字和网址改成他们的。',
+    desc: '这里是朋友的博客，把名字、网址和头像改成他们的。',
     url: 'https://example.com',
+    avatar: '',
   },
 ];
