@@ -18,7 +18,7 @@ export const links = [
     {
     name: '光风',
     desc: '大手子',
-    url: 'decimo.top',
+    url: 'https://decimo.top/',
     avatar: '/images/democi.jpg',
   },
     {
@@ -32,5 +32,17 @@ export const links = [
     desc: '未曾谋面的飞科',
     url: 'https://dxfaker.top/',
     avatar: '/images/dxfaker.jpg',
+  },
+    {
+    name: 'Ray',
+    desc: '好GG',
+    url: 'https://ruijian-huang.github.io/',
+    avatar: '/images/rjgg.jpg',
+  },
+    {
+    name: '磨糖',
+    desc: 'cjdsa',
+    url: 'https://yinniao23.github.io/Lynn_blog/',
+    avatar: '/images/rjgg.jpg',
   },
 ];
