@@ -1,0 +1,89 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+// 把全部文章内联进页面，纯前端搜索（适合文章不多的博客）
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+const index = posts.map((post) => ({
+  title: post.data.title,
+  date: post.data.date.toISOString().slice(0, 10),
+  description: post.data.description ?? '',
+  tags: post.data.tags,
+  url: `/blog/${post.id}/`,
+}));
+---
+
+<Base title="Search" description="站内搜索">
+  <div class="container">
+    <header class="page-head">
+      <h1>Search</h1>
+      <p>搜索站内文章。</p>
+    </header>
+
+    <div class="search-box">
+      <input
+        class="search-input"
+        id="search-input"
+        type="search"
+        placeholder="输入关键词，比如：博客、Astro……"
+        autocomplete="off"
+      />
+      <p class="search-hint">共 {index.length} 篇文章。支持标题、简介和标签匹配。</p>
+    </div>
+
+    <div class="search-results" id="search-results"></div>
+    <p class="search-empty" id="search-empty" style="display: none">没有找到相关文章。</p>
+  </div>
+
+  <script>
+    const index = JSON.parse(
+      document.getElementById('search-data').textContent
+    );
+    const input = document.getElementById('search-input');
+    const results = document.getElementById('search-results');
+    const empty = document.getElementById('search-empty');
+
+    const esc = (s) =>
+      s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function render(q) {
+      const kw = q.trim().toLowerCase();
+      if (!kw) {
+        results.innerHTML = '';
+        empty.style.display = 'none';
+        return;
+      }
+      const hits = index.filter((p) =>
+        [p.title, p.description, p.tags.join(' ')].join(' ').toLowerCase().includes(kw)
+      );
+      if (hits.length === 0) {
+        results.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      results.innerHTML =
+        '<ul class="post-list">' +
+        hits
+          .map(
+            (p) =>
+              `<li class="post-item">
+                 <time class="post-date">${esc(p.date)}</time>
+                 <div>
+                   <a class="post-title" href="${p.url}">${esc(p.title)}</a>
+                   ${p.description ? `<p class="post-excerpt">${esc(p.description)}</p>` : ''}
+                 </div>
+               </li>`
+          )
+          .join('') +
+        '</ul>';
+    }
+
+    input.addEventListener('input', () => render(input.value));
+  </script>
+
+  <!-- 文章数据：用 JSON 传给上面的脚本 -->
+  <script id="search-data" type="application/json" set:html={JSON.stringify(index)} />
+</Base>

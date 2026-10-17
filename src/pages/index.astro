@@ -1,0 +1,106 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { site } from '../data/site';
+import { education } from '../data/education';
+import { skills } from '../data/skills';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+const recent = posts.slice(0, 8);
+const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+---
+
+<Base>
+  <!-- 首屏 -->
+  <section class="hero">
+    <div class="container">
+      <div class="avatar" aria-hidden="true">{site.avatarLetter}</div>
+      <h1>{site.name}</h1>
+      <p class="hero-tagline">
+        {site.tagline}
+        {site.location && <span> · {site.location}</span>}
+      </p>
+      <div class="hero-links">
+        <a class="icon-btn" href={site.links.github} target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+          </svg>
+        </a>
+        <a class="icon-btn" href={site.links.email} aria-label="邮箱" title="邮箱">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+            <path d="m22 7-10 6L2 7"></path>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <div class="container">
+    <!-- 关于 -->
+    <section class="section">
+      <h2 class="section-title">About <span class="section-en">关于我</span></h2>
+      <p>我是小猫。</p>
+      <p>
+        这里是我的个人博客，用来记录学习和生活。网站用
+        <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>
+        搭建，托管在
+        <a href="https://pages.github.com" target="_blank" rel="noopener">GitHub Pages</a>
+        上。想了解这个网站本身，可以看看
+        <a href="/about">About 页面</a>。
+      </p>
+    </section>
+
+    <!-- 最近文章 -->
+    <section class="section">
+      <h2 class="section-title">Posts <span class="section-en">最近文章</span></h2>
+      {
+        recent.length > 0 ? (
+          <ul class="post-list">
+            {recent.map((post) => (
+              <li class="post-item">
+                <time class="post-date" datetime={post.data.date.toISOString()}>
+                  {fmt.format(post.data.date)}
+                </time>
+                <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="post-excerpt">还没有文章，等 takinol 写第一篇吧。</p>
+        )
+      }
+      <a class="more-link" href="/blog">全部文章 →</a>
+    </section>
+
+    <!-- 教育经历 -->
+    <section class="section">
+      <h2 class="section-title">Education <span class="section-en">教育经历</span></h2>
+      <ul class="timeline">
+        {education.map((item) => (
+          <li>
+            <span class="tl-school">{item.school}</span>
+            <span class="tl-period">{item.period}</span>
+            <div class="tl-degree">{item.degree}</div>
+            {item.note && <div class="tl-note">{item.note}</div>}
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <!-- 技能 -->
+    <section class="section">
+      <h2 class="section-title">Skills <span class="section-en">技能</span></h2>
+      {skills.map((group) => (
+        <div class="skills-group">
+          <h3>{group.group}</h3>
+          <div class="skill-chips">
+            {group.items.map((item) => <span class="skill-chip">{item}</span>)}
+          </div>
+        </div>
+      ))}
+    </section>
+  </div>
+</Base>

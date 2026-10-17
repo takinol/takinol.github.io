@@ -1,0 +1,24 @@
+---
+import Base from '../layouts/Base.astro';
+import { projects } from '../data/projects';
+---
+
+<Base title="Projects" description="我的项目">
+  <div class="container">
+    <header class="page-head">
+      <h1>Projects</h1>
+      <p>做过的和正在做的事。</p>
+    </header>
+
+    <div class="card-grid">
+      {
+        projects.map((project) => (
+          <a class="card" href={project.url || undefined} target={project.url ? '_blank' : undefined} rel="noopener">
+            <h3>{project.name}</h3>
+            <p>{project.desc}</p>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Base>

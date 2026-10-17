@@ -1,0 +1,24 @@
+---
+import Base from '../layouts/Base.astro';
+import { links } from '../data/links';
+---
+
+<Base title="Links" description="友情链接">
+  <div class="container">
+    <header class="page-head">
+      <h1>Links</h1>
+      <p>朋友们的小站。</p>
+    </header>
+
+    <div class="card-grid">
+      {
+        links.map((link) => (
+          <a class="card" href={link.url} target="_blank" rel="noopener">
+            <h3>{link.name}</h3>
+            <p>{link.desc}</p>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Base>

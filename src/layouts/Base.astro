@@ -1,0 +1,142 @@
+---
+import '../styles/global.css';
+import { site, nav } from '../data/site';
+interface Props {
+  title?: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
+const pageTitle = title ? `${title} · ${site.name}` : `${site.name} · ${site.tagline}`;
+const pageDescription = description ?? site.description;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title={site.name} href="/rss.xml" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <!-- 主题初始化：防止刷新时闪一下浅色 -->
+    <script is:inline>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          if (t) document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/">
+          {site.name}<span class="brand-dot">.</span>
+        </a>
+
+        <nav class="nav" id="site-nav">
+          {
+            nav.map((item) => (
+              <a class="nav-link" href={item.href}>{item.label}</a>
+            ))
+          }
+          <a class="icon-btn" href="/search" aria-label="搜索" title="搜索">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </a>
+          <button class="icon-btn nav-toggle" id="nav-toggle" aria-label="菜单" aria-expanded="false">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="4" y1="7" x2="20" y2="7"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="17" x2="20" y2="17"></line>
+            </svg>
+          </button>
+          <button class="icon-btn" id="theme-toggle" aria-label="切换主题" title="切换主题">
+            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"></circle>
+              <line x1="12" y1="2" x2="12" y2="5"></line>
+              <line x1="12" y1="19" x2="12" y2="22"></line>
+              <line x1="2" y1="12" x2="5" y2="12"></line>
+              <line x1="19" y1="12" x2="22" y2="12"></line>
+              <line x1="4.9" y1="4.9" x2="6.3" y2="6.3"></line>
+              <line x1="17.7" y1="17.7" x2="19.1" y2="19.1"></line>
+              <line x1="4.9" y1="19.1" x2="6.3" y2="17.7"></line>
+              <line x1="17.7" y1="6.3" x2="19.1" y2="4.9"></line>
+            </svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <span class="footer-copy">© {new Date().getFullYear()} {site.name}</span>
+        <div class="footer-links">
+          <a class="icon-btn" href={site.links.github} target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+          </a>
+          <a class="icon-btn" href={site.links.email} aria-label="邮箱" title="邮箱">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+              <path d="m22 7-10 6L2 7"></path>
+            </svg>
+          </a>
+          <a class="icon-btn" href="/rss.xml" aria-label="RSS" title="RSS">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 11a9 9 0 0 1 9 9"></path>
+              <path d="M4 4a16 16 0 0 1 16 16"></path>
+              <circle cx="5" cy="19" r="1.5" fill="currentColor"></circle>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // 主题切换
+      const toggle = document.getElementById('theme-toggle');
+      toggle?.addEventListener('click', () => {
+        const html = document.documentElement;
+        const next = html.getAttribute('data-theme') === 'light' ? '' : 'light';
+        if (next) {
+          html.setAttribute('data-theme', next);
+        } else {
+          html.removeAttribute('data-theme');
+        }
+        try {
+          localStorage.setItem('theme', next);
+        } catch (e) {}
+      });
+
+      // 移动端菜单
+      const navToggle = document.getElementById('nav-toggle');
+      const siteNav = document.getElementById('site-nav');
+      navToggle?.addEventListener('click', () => {
+        const open = siteNav?.classList.toggle('open');
+        navToggle.setAttribute('aria-expanded', String(!!open));
+      });
+      // 点链接后收起菜单
+      siteNav?.querySelectorAll('a').forEach((a) =>
+        a.addEventListener('click', () => {
+          siteNav.classList.remove('open');
+          navToggle?.setAttribute('aria-expanded', 'false');
+        })
+      );
+    </script>
+  </body>
+</html>
