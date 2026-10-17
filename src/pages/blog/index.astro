@@ -6,7 +6,14 @@ import { getCollection } from 'astro:content';
 const posts = (await getCollection('blog')).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
 );
-const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+const dateFmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+
+// 按正文中文字符数估算阅读时长（约每分钟 400 字）
+function minutesRead(post: any): number {
+  const body: string = post.body ?? '';
+  const chars = body.replace(/\s+/g, '').length;
+  return Math.max(1, Math.round(chars / 400));
+}
 ---
 
 <Base title="Blog" description="全部文章列表">
@@ -19,19 +26,32 @@ const fmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', d
 
       {
         posts.length > 0 ? (
-          <ul class="post-list" style="margin-top: 36px">
+          <div style="margin-top: 36px">
             {posts.map((post) => (
-              <li class="post-item">
-                <time class="post-date" datetime={post.data.date.toISOString()}>
-                  {fmt.format(post.data.date)}
-                </time>
-                <div>
-                  <a class="post-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
-                  {post.data.description && <p class="post-excerpt">{post.data.description}</p>}
+              <a class="post-card" href={`/blog/${post.id}/`}>
+                <div class="pc-meta">
+                  <span>{dateFmt.format(post.data.date)}</span>
+                  {post.data.updated && (
+                    <>
+                      <span class="pc-sep">/</span>
+                      <span>更新 {dateFmt.format(post.data.updated)}</span>
+                    </>
+                  )}
+                  <span class="pc-sep">·</span>
+                  <span>{minutesRead(post)} 分钟</span>
+                  <span class="pc-sep">·</span>
+                  <span>{post.data.language}</span>
                 </div>
-              </li>
+                <div class="pc-title">{post.data.title}</div>
+                {post.data.description && <p class="pc-desc">{post.data.description}</p>}
+                {post.data.tags.length > 0 && (
+                  <div class="pc-tags">
+                    {post.data.tags.map((tag) => <span class="pc-tag">{tag}</span>)}
+                  </div>
+                )}
+              </a>
             ))}
-          </ul>
+          </div>
         ) : (
           <p style="margin-top: 40px; color: var(--text-muted)">还没有文章。</p>
         )

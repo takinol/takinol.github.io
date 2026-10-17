@@ -101,10 +101,14 @@ const blog = defineCollection({
     title: z.string(),
     // 发布日期（YYYY-MM-DD），会被自动格式化成中文
     date: z.coerce.date(),
+    // 更新日期（可选，写了会在列表里显示“更新 X”）
+    updated: z.coerce.date().optional(),
     // 文章简介（列表页和搜索用）
     description: z.string().optional(),
     // 标签（可省略）
     tags: z.array(z.string()).default([]),
+    // 文章语言（不写默认中文）
+    language: z.string().default('中文'),
   }),
 });
 
