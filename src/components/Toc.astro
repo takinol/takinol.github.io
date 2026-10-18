@@ -1,7 +1,8 @@
 ---
-// 右侧目录：自动扫描 .toc-content 里的 h2~h6 生成嵌套目录 + 滚动高亮
-// 实现思路参考 arthals.ink（astro-pure 的 TOC 组件）：
-// 用「栈」把扁平标题整理成 h2→h3→h4 的嵌套树，再滚动时高亮当前章节。
+// 右侧目录：自动扫描 .toc-content 里的 h2~h6 生成嵌套目录
+// 效果参考 arthals.ink（astro-pure 的 TOC 组件）：
+// 每一项左边有一条 2px 的进度条，随阅读位置从 0 长到满；
+// 正在读的章节高亮成强调色，连续的几项会拼成一块圆角背景。
 ---
 <nav class="toc" id="page-toc" aria-label="目录">
   <p class="toc-title">目录</p>
@@ -18,20 +19,27 @@
   } else {
     const heads = Array.from(
       scope.querySelectorAll('h2[id], h3[id], h4[id], h5[id], h6[id]')
-    );
+    ) as HTMLElement[];
 
     // 标题太少就不显示目录（但右侧位置仍被 .toc-col 留出）
     if (heads.length < 2) {
       nav.style.display = 'none';
     } else {
       // 1) 把扁平标题整理成嵌套树
-      const tree = [];
-      const stack = [{ depth: 0, children: tree }];
+      interface TocNode {
+        depth: number;
+        id: string;
+        text: string;
+        children: TocNode[];
+      }
+      const tree: TocNode[] = [];
+      const stack: { depth: number; children: TocNode[] }[] = [{ depth: 0, children: tree }];
+
       heads.forEach((h) => {
-        const node = {
+        const node: TocNode = {
           depth: Number(h.tagName[1]),
           id: h.id,
-          text: h.textContent.replace(/\s+/g, ' ').trim(),
+          text: h.textContent?.replace(/\s+/g, ' ').trim() ?? '',
           children: [],
         };
         while (stack[stack.length - 1].depth >= node.depth) stack.pop();
@@ -39,50 +47,100 @@
         stack.push(node);
       });
 
-      // 2) 递归渲染 <ul><li><a>
-      const renderUl = (nodes) => {
+      // 2) 递归渲染 <li><div.toc-row><span.toc-bar><a>
+      const renderUl = (nodes: TocNode[]) => {
         const ul = document.createElement('ul');
         nodes.forEach((n) => {
           const li = document.createElement('li');
+
+          const row = document.createElement('div');
+          row.className = 'toc-row';
+
+          const bar = document.createElement('span');
+          bar.className = 'toc-bar';
+
           const a = document.createElement('a');
           a.href = '#' + n.id;
           a.textContent = n.text;
           a.dataset.slug = n.id;
-          li.appendChild(a);
+
+          row.append(bar, a);
+          li.appendChild(row);
           if (n.children.length) li.appendChild(renderUl(n.children));
           ul.appendChild(li);
         });
         return ul;
       };
       list.appendChild(renderUl(tree));
-      const links = Array.from(list.querySelectorAll('a'));
 
-      // 3) 滚动时高亮当前阅读到的章节
-      let active = null;
-      const setActive = (id) => {
-        if (id === active) return;
-        active = id;
-        links.forEach((a) => a.classList.toggle('active', a.dataset.slug === id));
-      };
-      const onScroll = () => {
-        const offset = 120;
-        let current = heads[0];
-        heads.forEach((h) => {
-          if (h.getBoundingClientRect().top <= offset) current = h;
+      const items = Array.from(list.querySelectorAll('a')).map((a) => ({
+        a,
+        bar: a.previousElementSibling as HTMLElement,
+        index: heads.findIndex((h) => h.id === a.dataset.slug),
+      }));
+
+      // 3) 滚动时算出每一节「读了多少」
+      //    start / end 分别是这一节在视口里的上沿和下沿，
+      //    进度 = 视口高度已经越过这一节的比例
+      const update = () => {
+        const vh = window.innerHeight;
+        const y = window.scrollY;
+        const tops = heads.map((h) => h.getBoundingClientRect().top + y);
+        const articleBottom = (scope as HTMLElement).getBoundingClientRect().bottom + y;
+
+        const state = heads.map((h, i) => {
+          const start = tops[i] - y;
+          const nextTop = i + 1 < heads.length ? tops[i + 1] : articleBottom;
+          const end = nextTop - y - h.offsetHeight;
+          const span = end - start;
+          const raw = span > 0 ? (vh - start) / span : start < 0 ? 1 : 0;
+          return {
+            inView: start < vh && end > 0,
+            progress: Math.max(0, Math.min(1, raw)),
+          };
         });
-        setActive(current.id);
+
+        items.forEach((it, i) => {
+          if (it.index < 0) return;
+          const s = state[it.index];
+          const prev = it.index > 0 ? state[it.index - 1] : null;
+          const next = it.index + 1 < state.length ? state[it.index + 1] : null;
+
+          it.bar.style.height = s.progress * 90 + '%';
+          it.bar.classList.toggle('is-active', s.inView);
+          it.bar.classList.toggle('is-read', !s.inView && s.progress === 1);
+
+          it.a.classList.toggle('is-active', s.inView);
+          it.a.classList.toggle('round-top', s.inView && (!prev || !prev.inView));
+          it.a.classList.toggle('round-bottom', s.inView && (!next || !next.inView));
+        });
       };
+
+      let ticking = false;
+      const onScroll = () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          ticking = false;
+          update();
+        });
+      };
+
       window.addEventListener('scroll', onScroll, { passive: true });
-      onScroll();
+      window.addEventListener('resize', onScroll);
+      // 图片加载完高度会变，等 load 再量一次
+      window.addEventListener('load', update);
+      update();
 
       // 4) 点击目录：平滑滚动 + 更新地址栏 hash
-      links.forEach((a) => {
+      items.forEach(({ a }) => {
         a.addEventListener('click', (e) => {
           e.preventDefault();
-          const target = document.getElementById(a.dataset.slug);
+          const id = a.dataset.slug;
+          const target = id ? document.getElementById(id) : null;
           if (!target) return;
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          history.replaceState(null, '', '#' + a.dataset.slug);
+          history.replaceState(null, '', '#' + id);
         });
       });
     }

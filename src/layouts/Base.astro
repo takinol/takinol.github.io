@@ -33,8 +33,8 @@ const pageDescription = description ?? site.description;
     </script>
   </head>
   <body>
-    <header class="site-header">
-      <div class="container header-inner">
+    <header class="site-header" id="site-header">
+      <div class="header-inner">
         <a class="brand" href="/">
           {site.name}<span class="brand-dot">.</span>
         </a>
@@ -89,7 +89,12 @@ const pageDescription = description ?? site.description;
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <span class="footer-copy">© {new Date().getFullYear()} {site.name}</span>
+        <div class="footer-left">
+          <span class="footer-copy">© {new Date().getFullYear()} {site.name}</span>
+          <span class="footer-stat">
+            本站已被访问 <b data-visit="site_pv">—</b> 次 · <b data-visit="site_uv">—</b> 位访客
+          </span>
+        </div>
         <div class="footer-links">
           <a class="icon-btn" href={site.links.github} target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -125,17 +130,107 @@ const pageDescription = description ?? site.description;
       // 移动端菜单
       const navToggle = document.getElementById('nav-toggle');
       const siteNav = document.getElementById('site-nav');
+      const closeNav = () => {
+        siteNav?.classList.remove('open');
+        navToggle?.setAttribute('aria-expanded', 'false');
+      };
       navToggle?.addEventListener('click', () => {
         const open = siteNav?.classList.toggle('open');
         navToggle.setAttribute('aria-expanded', String(!!open));
       });
       // 点链接后收起菜单
-      siteNav?.querySelectorAll('a').forEach((a) =>
-        a.addEventListener('click', () => {
-          siteNav.classList.remove('open');
-          navToggle?.setAttribute('aria-expanded', 'false');
-        })
+      siteNav?.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeNav));
+
+      // 顶栏：往下滑变白色浮卡 + 继续下滑自动收起，往回滑再落下来
+      const header = document.getElementById('site-header');
+      let lastY = window.scrollY;
+      let ticking = false;
+
+      const onScroll = () => {
+        ticking = false;
+        if (!header) return;
+        const y = window.scrollY;
+
+        // 离开顶部 12px 就变成卡片（透明 → 白底描边阴影）
+        header.classList.toggle('is-scrolled', y > 12);
+
+        // 超过 320px 且还在往下滑 → 收起；往回滑或回到顶部附近 → 出现
+        if (y > 320 && y > lastY + 2) {
+          if (!header.classList.contains('is-hidden')) {
+            header.classList.add('is-hidden');
+            closeNav();
+          }
+        } else if (y < lastY - 2 || y <= 320) {
+          header.classList.remove('is-hidden');
+        }
+
+        lastY = y;
+      };
+
+      window.addEventListener(
+        'scroll',
+        () => {
+          if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(onScroll);
+          }
+        },
+        { passive: true }
       );
+      onScroll();
+
+      // 访问量：vercount（不蒜子替代）的公开接口，静态博客不需要自建后端
+      const visitEls = Array.from(document.querySelectorAll<HTMLElement>('[data-visit]'));
+      if (visitEls.length) {
+        const host = location.hostname;
+        const isLocal = !host || host === 'localhost' || host === '127.0.0.1';
+        const cacheKey = 'takinol:visits:v1:' + location.pathname;
+
+        const fill = (data: Record<string, number>) => {
+          visitEls.forEach((el) => {
+            const v = data[el.dataset.visit || ''];
+            if (typeof v === 'number' && Number.isFinite(v)) {
+              el.textContent = v.toLocaleString('zh-CN');
+            }
+          });
+        };
+
+        // 先拿上一次缓存顶上，避免数字从「—」跳变
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) fill(JSON.parse(cached));
+        } catch (e) {}
+
+        if (!isLocal) {
+          const uvCookie = 'takinol_uv';
+          const seen = document.cookie.split('; ').some((c) => c.startsWith(uvCookie + '='));
+          if (!seen) {
+            document.cookie = uvCookie + '=1; path=/; max-age=31536000; samesite=lax';
+          }
+
+          fetch('https://events.vercount.one/api/v2/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: location.origin + location.pathname,
+              isNewUv: !seen,
+            }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((res) => {
+              const data = res?.data ?? res;
+              if (data && typeof data.site_pv === 'number') {
+                fill(data);
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify(data));
+                } catch (e) {}
+              }
+            })
+            .catch(() => {
+              /* 统计服务挂了就不显示数字，不影响页面 */
+            });
+        }
+      }
     </script>
   </body>
 </html>

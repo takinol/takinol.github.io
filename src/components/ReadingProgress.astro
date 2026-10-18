@@ -1,0 +1,61 @@
+---
+// 右下角阅读进度浮标：滚动时显示百分比，读完变回顶部箭头
+// 效果参考 arthals.ink 的 BackToTop 组件
+---
+<div class="read-progress" id="read-progress">
+  <button type="button" class="rp-btn" id="rp-btn" aria-label="回到顶部" title="回到顶部">
+    <span class="rp-num" id="rp-num">0</span><span class="rp-unit">%</span>
+    <svg
+      class="rp-arrow"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="12" y1="19" x2="12" y2="5"></line>
+      <polyline points="5 12 12 5 19 12"></polyline>
+    </svg>
+  </button>
+</div>
+
+<script>
+  const wrap = document.getElementById('read-progress');
+  const num = document.getElementById('rp-num');
+  const btn = document.getElementById('rp-btn');
+
+  if (wrap && num && btn) {
+    const update = () => {
+      const doc = document.documentElement;
+      const total = doc.scrollHeight - window.innerHeight;
+      const y = window.scrollY;
+      const percent = total <= 0 ? 100 : Math.round(Math.max(0, Math.min(1, y / total)) * 100);
+
+      num.textContent = String(percent);
+      wrap.classList.toggle('done', percent >= 100);
+      wrap.classList.toggle('show', y > 220);
+    };
+
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        update();
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    window.addEventListener('load', update);
+    update();
+
+    btn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+</script>

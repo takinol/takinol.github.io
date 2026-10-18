@@ -108,21 +108,56 @@ img {
 }
 
 /* ---------- 顶部导航 ---------- */
+/* 仿 arthals.ink：在顶部时完全透明（露出背景渐变），往下滑变成一块浮起来的白卡片 */
 .site-header {
   position: sticky;
   top: 0;
   z-index: 50;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
-  border-bottom: 1px solid var(--border);
+  height: 60px;
+  display: flex;
+  align-items: center;
+  /* 空白区域不挡点击，只有卡片本身接收事件 */
+  pointer-events: none;
+  transition: top 0.3s ease;
+}
+
+.site-header.is-scrolled {
+  top: 8px;
 }
 
 .header-inner {
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  max-width: var(--maxw);
   height: 60px;
+  margin: 0 auto;
+  padding: 0 24px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: transparent;
+  transition: height 0.3s ease, background-color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* 滚下去之后：白底 + 描边 + 阴影 + 变矮，像一张浮在内容上的卡片 */
+.site-header.is-scrolled .header-inner {
+  height: 52px;
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  box-shadow: 0 12px 32px -16px rgba(15, 20, 40, 0.28), 0 1px 2px rgba(15, 20, 40, 0.06);
+}
+
+html[data-theme="dark"] .site-header.is-scrolled .header-inner {
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.8), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* 往下滑时整条收起，往回滑再落下来。
+   用 top 而不是 transform：transform 会让移动端 fixed 菜单的定位基准变成卡片自己 */
+.site-header.is-hidden {
+  top: -84px;
 }
 
 .brand {
@@ -261,6 +296,24 @@ html:not([data-theme="dark"]) .icon-sun {
 .footer-copy {
   color: var(--text-faint);
   font-size: 14px;
+}
+
+/* 页脚左边的两行：版权 + 访问量 */
+.footer-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.footer-stat {
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.footer-stat b {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 .footer-links {
@@ -656,19 +709,32 @@ html:not([data-theme="dark"]) .icon-sun {
   font-size: 34px;
   line-height: 1.35;
   font-weight: 700;
-  margin: 0 0 14px;
+  margin: 0;
 }
 
+/* 文章信息行（日期 / 时长 / 阅读量 / 标签）：放在标题上方，参考 arthals.ink */
 .post-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 6px 18px;
   color: var(--text-faint);
-  font-size: 14px;
-  padding-bottom: 26px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 34px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.meta-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  opacity: 0.7;
 }
 
 .post-meta time {
@@ -676,12 +742,30 @@ html:not([data-theme="dark"]) .icon-sun {
   font-size: 13px;
 }
 
-.tag {
-  font-size: 13px;
+.meta-tags {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.meta-sep {
+  margin: 0 5px;
+  opacity: 0.45;
+}
+
+/* 标题下面那句简介：斜体引文 */
+.post-desc {
+  margin: 12px 0 0;
   color: var(--text-muted);
-  background: var(--accent-soft);
-  border-radius: 999px;
-  padding: 2px 10px;
+  font-size: 15.5px;
+  font-style: italic;
+  line-height: 1.75;
+}
+
+/* 简介和正文之间的短横线 */
+.post-divider {
+  width: 33%;
+  border-top: 1px solid var(--border);
+  margin: 28px 0 34px;
 }
 
 /* 正文排版（prose） */
@@ -766,6 +850,12 @@ html:not([data-theme="dark"]) .icon-sun {
   padding: 2px 6px;
 }
 
+/* 行内代码里的长串（路径、文件名、变量名）没有空格，会把整页撑出横向滚动条，
+   允许它在任意位置断行；代码块内部的 <code> 不受影响 */
+.prose :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
 .prose pre {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -806,6 +896,17 @@ html:not([data-theme="dark"]) .icon-sun {
   border-collapse: collapse;
   margin: 0 0 18px;
   font-size: 15px;
+}
+
+/* 宽表格的横向滚动壳（由 Post.astro 里的脚本动态包上） */
+.table-wrap {
+  overflow-x: auto;
+  margin: 0 0 18px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap table {
+  margin-bottom: 0;
 }
 
 .prose th,
@@ -967,17 +1068,17 @@ html:not([data-theme="dark"]) .icon-sun {
 }
 
 .toc {
-  font-size: 13.5px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .toc .toc-title {
   font-family: var(--font-mono);
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   color: var(--text-faint);
-  margin: 0 0 10px;
+  margin: 0 0 14px;
 }
 
 .toc ul {
@@ -987,14 +1088,41 @@ html:not([data-theme="dark"]) .icon-sun {
 }
 
 .toc ul ul {
-  margin-left: 14px;
+  margin-left: 10px;
+}
+
+/* 每一项：左边一条 2px 的进度条 + 文字，进度条随阅读位置长高 */
+.toc-row {
+  position: relative;
+}
+
+.toc-bar {
+  position: absolute;
+  left: 0;
+  top: 5%;
+  width: 2px;
+  height: 0;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color 0.3s ease, height 0.12s linear;
+}
+
+/* 已经读完的小节：留一条淡淡的整条 */
+.toc-bar.is-read {
+  background: var(--border);
+}
+
+/* 正在读的小节：强调色 */
+.toc-bar.is-active {
+  background: var(--accent);
 }
 
 .toc a {
   display: block;
+  margin-left: 2px;
+  padding: 4px 12px;
   color: var(--text-faint);
-  padding: 3px 10px;
-  border-left: 2px solid transparent;
+  border-radius: 8px;
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -1002,11 +1130,23 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--text);
 }
 
-.toc a.active {
+.toc a.is-active {
   color: var(--accent);
-  border-left-color: var(--accent);
   background: var(--accent-soft);
-  border-radius: 0 6px 6px 0;
+  font-weight: 500;
+}
+
+/* 连续高亮的几项拼成一块圆角背景 */
+.toc a.round-top {
+  border-radius: 10px 10px 0 0;
+}
+
+.toc a.round-bottom {
+  border-radius: 0 0 10px 10px;
+}
+
+.toc a.round-top.round-bottom {
+  border-radius: 10px;
 }
 
 /* 点目录锚点跳转时，标题不要被吸顶导航栏挡住 */
@@ -1050,6 +1190,85 @@ html:not([data-theme="dark"]) .icon-sun {
 
   .post-article h1 {
     font-size: 27px;
+  }
+}
+
+/* ---------- 阅读进度（右下角浮标） ---------- */
+.read-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.read-progress.show {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.rp-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.rp-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.rp-num,
+.rp-unit {
+  transition: opacity 0.2s ease;
+}
+
+/* 读到 100% 后，数字淡出、箭头淡入 */
+.rp-arrow {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.read-progress.done .rp-num,
+.read-progress.done .rp-unit {
+  opacity: 0;
+}
+
+.read-progress.done .rp-arrow {
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .read-progress {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .rp-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 12px;
   }
 }
 
