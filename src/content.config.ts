@@ -126,6 +126,8 @@ const blog = defineCollection({
     language: z.string().default('中文'),
     // 草稿：draft: true 会从网站上「下架」（列表/搜索/RSS 都不显示），但文件保留
     draft: z.boolean().default(false),
+    // 加密：写了 password 的文章在列表/搜索照常显示，但正文必须输对密码才能看
+    password: z.string().optional(),
   }),
 });
 

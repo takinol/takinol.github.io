@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Post from '../../layouts/Post.astro';
+import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
 
 export async function getStaticPaths() {
   const posts = (await getCollection('blog')).filter((p) => !p.data.draft);
@@ -24,10 +25,50 @@ const all = (await getCollection('blog'))
 const idx = all.findIndex((p) => p.id === post.id);
 const newer = idx > 0 ? all[idx - 1] : null;
 const older = idx >= 0 && idx < all.length - 1 ? all[idx + 1] : null;
+
+// —— 加密文章：frontmatter 里写了 password 就启用 ——
+// 把渲染好的正文 HTML 用密码加密：密码经 PBKDF2（15 万次迭代）派生密钥，
+// 再用 AES-256-GCM 加密。这样就算有人扒源码，也读不出正文，必须输对密码。
+const password = post.data.password;
+let encrypted: { s: string; i: string; c: string; t: string } | null = null;
+let cipherJson = '';
+if (password) {
+  const html = (post as any).rendered?.html ?? '';
+  const salt = randomBytes(16);
+  const iv = randomBytes(12);
+  const key = pbkdf2Sync(password, salt, 150000, 32, 'sha256');
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(html, 'utf8'), cipher.final()]);
+  encrypted = {
+    s: salt.toString('base64'),
+    i: iv.toString('base64'),
+    c: ct.toString('base64'),
+    t: cipher.getAuthTag().toString('base64'),
+  };
+  // 转义 < 防止密文里出现 </script> 把页面截断
+  cipherJson = JSON.stringify(encrypted).replace(/</g, '\\u003c');
+}
 ---
 
 <Post title={post.data.title} date={post.data.date} tags={post.data.tags} description={post.data.description} minutes={minutes}>
-  <Content />
+  {encrypted ? (
+    <>
+      <div class="pw-gate" id="pw-gate">
+        <div class="pw-lock" aria-hidden="true">🔒</div>
+        <h2 class="pw-title">这篇是加密文章</h2>
+        <p class="pw-sub">输对密码后才能看到正文。</p>
+        <form class="pw-form" id="pw-form">
+          <input class="pw-input" id="pw-input" type="password" placeholder="请输入密码" autocomplete="off" />
+          <button class="pw-btn" type="submit">解锁</button>
+        </form>
+        <p class="pw-error" id="pw-error" aria-live="polite"></p>
+      </div>
+      <div class="pw-body" id="post-body" hidden></div>
+      <script type="application/json" id="post-cipher" set:html={cipherJson} />
+    </>
+  ) : (
+    <Content />
+  )}
   <nav class="post-pager">
     <div>
       {newer && (
@@ -47,3 +88,71 @@ const older = idx >= 0 && idx < all.length - 1 ? all[idx + 1] : null;
     </div>
   </nav>
 </Post>
+
+<script>
+  // 密码解锁：用输入的密码派生密钥，解密 AES-GCM 密文。密码错了解不开，提示重试。
+  const cipherEl = document.getElementById('post-cipher');
+  if (cipherEl) {
+    const payload = JSON.parse(cipherEl.textContent || 'null');
+    const gate = document.getElementById('pw-gate');
+    const body = document.getElementById('post-body');
+    const form = document.getElementById('pw-form');
+    const input = document.getElementById('pw-input');
+    const err = document.getElementById('pw-error');
+    if (payload && gate && body && form) {
+      const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        const unlockBtn = form.querySelector('button');
+        if (unlockBtn) unlockBtn.disabled = true;
+        try {
+          const enc = new TextEncoder();
+          const salt = b64(payload.s);
+          const iv = b64(payload.i);
+          const tag = b64(payload.t);
+          const ct = b64(payload.c);
+          const baseKey = await crypto.subtle.importKey(
+            'raw',
+            enc.encode(input.value),
+            'PBKDF2',
+            false,
+            ['deriveBits']
+          );
+          const bits = await crypto.subtle.deriveBits(
+            { name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' },
+            baseKey,
+            256
+          );
+          const key = await crypto.subtle.importKey(
+            'raw',
+            bits,
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+          );
+          const combined = new Uint8Array(ct.length + tag.length);
+          combined.set(ct, 0);
+          combined.set(tag, ct.length);
+          const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
+          body.innerHTML = new TextDecoder().decode(plain);
+          // 宽表格套可滚动壳（跟普通文章的 Post.astro 保持一致）
+          body.querySelectorAll('table').forEach((table) => {
+            const parent = table.parentElement;
+            if (!parent || parent.classList.contains('table-wrap')) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'table-wrap';
+            parent.insertBefore(wrap, table);
+            wrap.appendChild(table);
+          });
+          gate.hidden = true;
+          body.hidden = false;
+        } catch {
+          err.textContent = '密码错误，请重试';
+          if (unlockBtn) unlockBtn.disabled = false;
+          input.select();
+        }
+      });
+    }
+  }
+</script>

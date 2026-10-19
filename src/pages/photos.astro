@@ -72,9 +72,7 @@ const files = readdirSync(photosDir)
 
 <Base title="照片" description="小猫的照片墙">
   <div class="wall" id="wall">
-    <div class="wall-title">
-      照片<span class="wall-hint">可以随意拖动 · 点一下放大</span>
-    </div>
+    <div class="wall-title">照片</div>
     {
       files.length === 0 ? (
         <p class="wall-empty">
@@ -127,21 +125,13 @@ const files = readdirSync(photosDir)
     pointer-events: none;
   }
 
-  .wall-hint {
-    font-family: var(--font-body);
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--text-faint);
-    margin-left: 12px;
-  }
-
   /* 照片墙画布：铺满整个屏幕（顶部导航下面到页面底部），照片在里面随便拖 */
   .wall {
     position: fixed;
     top: 60px;
     left: 0;
     right: 0;
-    bottom: 16px;
+    bottom: 56px;
     z-index: 1;
     overflow: hidden;
     /* 放大照片时把整面墙高斯模糊掉 */
@@ -408,9 +398,6 @@ const files = readdirSync(photosDir)
       font-size: 21px;
       top: 14px;
       left: 18px;
-    }
-    .wall-hint {
-      display: none;
     }
     .sticky-note {
       max-width: 170px;

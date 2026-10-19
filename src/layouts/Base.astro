@@ -91,9 +91,6 @@ const pageDescription = description ?? site.description;
       <div class="container footer-inner">
         <div class="footer-left">
           <span class="footer-copy">© {new Date().getFullYear()} {site.name}</span>
-          <span class="footer-stat">
-            本站已被访问 <b data-visit="site_pv">—</b> 次 · <b data-visit="site_uv">—</b> 位访客
-          </span>
         </div>
         <div class="footer-links">
           <a class="icon-btn" href={site.links.github} target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
@@ -111,6 +108,11 @@ const pageDescription = description ?? site.description;
       </div>
     </footer>
 
+    <!-- 访客信息固定在最底部的小条：所有页面都常驻显示（含照片墙页） -->
+    <div class="footer-bar" aria-label="网站访问统计">
+      <span>已被访问 <b data-visit="site_pv">—</b> 次 · <b data-visit="site_uv">—</b> 位访客</span>
+    </div>
+
     <script>
       // 主题切换（默认浅色；点一下变深色，再点回浅色）
       const toggle = document.getElementById('theme-toggle');
@@ -127,7 +129,7 @@ const pageDescription = description ?? site.description;
         } catch (e) {}
       });
 
-      // 可点击区域的动态效果：给每个链接/按钮随机分配一个悬停颜色
+      // 可点击区域的动态效果：每次鼠标悬停/触摸都随机一个新的颜色
       // （hover 时元素会轻微浮起/放大 + 变成这个随机颜色，见 global.css 的 [data-hov] 规则）
       const hoverPalette = [
         '#4f8cff',
@@ -142,10 +144,13 @@ const pageDescription = description ?? site.description;
       document.querySelectorAll('a, button').forEach((el) => {
         if (el.classList.contains('brand') || el.classList.contains('lightbox-btn')) return;
         el.setAttribute('data-hov', '');
-        el.style.setProperty(
-          '--hov-c',
-          hoverPalette[Math.floor(Math.random() * hoverPalette.length)]
-        );
+        el.addEventListener('mouseenter', () => {
+          // 每次进入都重新随机，而不是刷新页面才变
+          el.style.setProperty(
+            '--hov-c',
+            hoverPalette[Math.floor(Math.random() * hoverPalette.length)]
+          );
+        });
       });
 
       // 移动端菜单

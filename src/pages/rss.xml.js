@@ -3,7 +3,7 @@ import { getCollection } from 'astro:content';
 import { site } from '../data/site';
 
 const posts = (await getCollection('blog'))
-  .filter((p) => !p.data.draft)
+  .filter((p) => !p.data.draft && !p.data.password)
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
 export const prerender = true;

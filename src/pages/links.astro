@@ -60,3 +60,64 @@ import { links } from '../data/links';
     </aside>
   </div>
 </Base>
+
+<script>
+  // 友链点击炫酷跳转：头像从卡片位置“嗖”地飞到屏幕中央，放大旋转 + 模糊增亮，
+  // 中央展开光环，白光一闪后跳转目标网站。
+  const cards = document.querySelectorAll('.link-card');
+  cards.forEach((card) => {
+    card.addEventListener('click', (e) => {
+      // 按住 Ctrl/Cmd 或点鼠标中键时，走浏览器默认行为（新标签页打开）
+      if (e.metaKey || e.ctrlKey || e.button !== 0) return;
+      e.preventDefault();
+      const url = card.getAttribute('href');
+      const avatar = card.querySelector('.link-avatar');
+      if (!avatar) {
+        window.location.href = url;
+        return;
+      }
+      const rect = avatar.getBoundingClientRect();
+
+      // 幽灵头像：克隆一个，固定定位到原位置
+      const ghost = avatar.cloneNode(true);
+      ghost.classList.add('link-zoom-ghost');
+      const gImg = ghost.querySelector('img');
+      if (gImg) gImg.removeAttribute('onerror');
+      Object.assign(ghost.style, {
+        position: 'fixed',
+        left: rect.left + 'px',
+        top: rect.top + 'px',
+        width: rect.width + 'px',
+        height: rect.height + 'px',
+        margin: '0',
+      });
+      document.body.appendChild(ghost);
+      void ghost.offsetWidth;
+
+      // 飞到屏幕中央：放大 + 旋转 + 模糊增亮
+      const cx = window.innerWidth / 2 - rect.left - rect.width / 2;
+      const cy = window.innerHeight / 2 - rect.top - rect.height / 2;
+      ghost.style.transition =
+        'transform 0.5s cubic-bezier(0.6, 0, 0.2, 1), filter 0.5s ease, box-shadow 0.5s ease';
+      ghost.style.transform = `translate(${cx}px, ${cy}px) scale(8) rotate(9deg)`;
+      ghost.style.filter = 'blur(8px) brightness(1.6)';
+      ghost.style.boxShadow = '0 0 90px var(--bg-glow)';
+
+      // 中央扩散的光环
+      const ring = document.createElement('div');
+      ring.className = 'link-zoom-ring';
+      document.body.appendChild(ring);
+      requestAnimationFrame(() => ring.classList.add('on'));
+
+      // 白光一闪（跟随主题色）
+      const flash = document.createElement('div');
+      flash.className = 'link-zoom-flash';
+      document.body.appendChild(flash);
+      requestAnimationFrame(() => flash.classList.add('on'));
+
+      setTimeout(() => {
+        window.location.href = url;
+      }, 520);
+    });
+  });
+</script>
