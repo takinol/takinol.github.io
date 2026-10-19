@@ -21,7 +21,7 @@ export const site = {
 // 导航菜单
 export const nav = [
   { label: 'Blog', href: '/blog' },
-  { label: '照片', href: '/photos' },
+  { label: 'photo', href: '/photos' },
   { label: 'Projects', href: '/projects' },
   { label: 'Links', href: '/links' },
   { label: 'About', href: '/about' },
