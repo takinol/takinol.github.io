@@ -65,7 +65,8 @@ import { links } from '../data/links';
   // 友链点击跳转：头像极速飞向屏幕中央，边飞边被"拉扯"变形（沿运动方向夸张拉伸、垂直压扁），
   // 一路从边缘喷出高温火线火花，撞到中心爆一圈，最后跳转。
   // 全程 requestAnimationFrame 逐帧驱动，满 DURATION 才跳转。
-  const DURATION = 720;
+  const DURATION = 720; // 飞入 + 自转的过程时长
+  const HOLD = 500; // 转完后停在中心 / 正位，保持这么久再跳转
   const SPARK_COLORS = ['#fff6c2', '#ffd166', '#ffb347', '#ff9f1c', '#ff6b35'];
 
   const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -9 * t));
@@ -167,6 +168,7 @@ import { links } from '../data/links';
       let ux = 1;
       let uy = 0;
       let burst = false;
+      let holding = false;
       const start = performance.now();
 
       const frame = (now) => {
@@ -191,8 +193,10 @@ import { links } from '../data/links';
 
         // —— 线性变换（矩阵）：沿运动方向夸张拉伸 + 垂直方向压扁（面积近似守恒）——
         // 脉动让形变"忽长忽短"，看起来像被高速扯开
+        // 脉动让形变"忽长忽短"；settle 在末尾收敛到 0，停住时就是标准正圆、不会残留拉长
+        const settle = 1 - Math.pow(t, 10);
         const wob = 0.5 + 0.5 * Math.sin(t * Math.PI * 5);
-        const kpar = 1 + 1.3 * speedNorm + 0.55 * wob; // 平行方向：拉伸（峰值约 4.8:1）
+        const kpar = 1 + (1.3 * speedNorm + 0.55 * wob) * settle; // 平行方向：拉伸（峰值约 4.8:1）
         const kperp = 1 / Math.sqrt(kpar); // 垂直方向：压扁
         const sxx = kpar * ux * ux + kperp * (1 - ux * ux);
         const sxy = (kpar - kperp) * ux * uy;
@@ -247,8 +251,10 @@ import { links } from '../data/links';
         lastY = py;
         if (t < 1) {
           requestAnimationFrame(frame);
-        } else {
-          go();
+        } else if (!holding) {
+          holding = true;
+          // 已经转回正位、形变也收干净了：原地停 HOLD 毫秒，然后才跳转
+          setTimeout(go, HOLD);
         }
       };
       requestAnimationFrame(frame);
