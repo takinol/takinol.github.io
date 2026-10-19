@@ -1611,8 +1611,8 @@ html:not([data-theme="dark"]) .icon-sun {
   border-radius: 50%;
   overflow: hidden;
   pointer-events: none;
-  /* 逐帧写入矩阵变换，交给 GPU 合成 */
-  will-change: transform;
+  /* 逐帧写入矩阵变换与滤镜，交给 GPU 合成 */
+  will-change: transform, filter;
   transform-origin: 50% 50%;
 }
 
