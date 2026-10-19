@@ -65,6 +65,11 @@ html {
 
 body {
   margin: 0;
+  /* 吸底页脚：内容少时页脚贴住屏幕底部（页面无法滑动），内容多时在划到底后的最下面 */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--bg);
   background-image: radial-gradient(
       1100px 520px at 50% -120px,
@@ -81,6 +86,12 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 中间内容区占满剩余高度，把页脚推到最底部 */
+main {
+  flex: 1 0 auto;
+  width: 100%;
 }
 
 ::selection {
@@ -1322,17 +1333,15 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--hov-c, var(--accent));
 }
 
-/* ---------- 固定在底部中央的访问统计小条（所有页面常驻，含照片墙页） ---------- */
+/* ---------- 固定在底部右下角的访问统计（所有页面常驻，含照片墙页） ---------- */
 .footer-bar {
   position: fixed;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+  right: 16px;
+  bottom: 12px;
   z-index: 45;
   display: inline-flex;
   align-items: center;
-  padding: 6px 16px;
-  border-radius: 999px;
+  padding: 7px 14px;
   font-size: 12px;
   line-height: 1;
   color: var(--text-faint);
