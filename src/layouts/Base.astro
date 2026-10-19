@@ -127,6 +127,27 @@ const pageDescription = description ?? site.description;
         } catch (e) {}
       });
 
+      // 可点击区域的动态效果：给每个链接/按钮随机分配一个悬停颜色
+      // （hover 时元素会轻微浮起/放大 + 变成这个随机颜色，见 global.css 的 [data-hov] 规则）
+      const hoverPalette = [
+        '#4f8cff',
+        '#7c5cfc',
+        '#00b894',
+        '#fd79a8',
+        '#e17055',
+        '#00cec9',
+        '#6ab04c',
+        '#ff9f43',
+      ];
+      document.querySelectorAll('a, button').forEach((el) => {
+        if (el.classList.contains('brand') || el.classList.contains('lightbox-btn')) return;
+        el.setAttribute('data-hov', '');
+        el.style.setProperty(
+          '--hov-c',
+          hoverPalette[Math.floor(Math.random() * hoverPalette.length)]
+        );
+      });
+
       // 移动端菜单
       const navToggle = document.getElementById('nav-toggle');
       const siteNav = document.getElementById('site-nav');

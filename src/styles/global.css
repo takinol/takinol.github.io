@@ -1288,3 +1288,36 @@ html:not([data-theme="dark"]) .icon-sun {
 .page-head {
   animation: fadeUp 0.5s ease both;
 }
+
+/* ---------- 可点击区域的动态反馈 ----------
+   悬停：轻微浮起 + 放大 + 随机颜色（颜色由 Base.astro 里的 JS 随机分配）
+   按下：轻轻压下去。
+   用独立的 translate / scale 属性叠加，不会破坏元素自身已有的 transform
+   （比如大图翻页按钮的 translateY(-50%) 居中定位）。 */
+[data-hov] {
+  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+    translate 0.28s cubic-bezier(0.2, 0.7, 0.2, 1), scale 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+    color 0.28s ease, border-color 0.28s ease, background-color 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+[data-hov]:hover {
+  translate: 0 -2px;
+  scale: 1.03;
+}
+
+[data-hov]:active {
+  translate: 0 0;
+  scale: 0.96;
+}
+
+[data-hov]:hover,
+[data-hov]:active {
+  color: var(--hov-c, var(--accent));
+}
+
+/* 卡片类链接的标题也跟着变色 */
+[data-hov]:hover .pc-title,
+[data-hov]:hover h3 {
+  color: var(--hov-c, var(--accent));
+}
