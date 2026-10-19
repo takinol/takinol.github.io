@@ -1368,16 +1368,17 @@ html:not([data-theme="dark"]) .icon-sun {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 底部多留白，让面板落在「中间偏上」 */
+  /* 底部留白，让面板落在「中间偏上」 */
   padding: 24px 20px 12vh;
-  /* 近黑紫调 + 细密扫描纹理：冷、暗、有压迫感 */
+  /* 纯黑不透明底色：后面的文章、导航、统计条全部看不到，只剩中间的面板
+     （上层再叠一点点紫色辉光做气氛，但底层是 #000，完全遮死） */
   background: repeating-linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.03) 0 1px,
+      rgba(255, 255, 255, 0.028) 0 1px,
       transparent 1px 3px
     ),
-    radial-gradient(120% 90% at 50% 0%, rgba(88, 28, 135, 0.42), transparent 62%),
-    rgba(6, 3, 10, 0.93);
+    radial-gradient(120% 90% at 50% 0%, rgba(88, 28, 135, 0.34), transparent 58%),
+    #000;
   animation: pwVeil 0.3s ease both;
 }
 
@@ -1411,12 +1412,13 @@ html:not([data-theme="dark"]) .icon-sun {
   border-radius: 2px;
   background: linear-gradient(
     180deg,
-    rgba(24, 12, 34, 0.97),
-    rgba(10, 5, 16, 0.97)
+    rgba(32, 17, 46, 0.99),
+    rgba(15, 8, 24, 0.99)
   );
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65),
-    0 30px 80px -24px rgba(88, 28, 135, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9),
+    0 0 60px -6px rgba(124, 58, 237, 0.55),
+    0 30px 80px -24px rgba(88, 28, 135, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
