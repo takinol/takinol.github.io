@@ -145,15 +145,17 @@ if (password) {
             parent.insertBefore(wrap, table);
             wrap.appendChild(table);
           });
-          // 解锁成功：先露出正文，再让悬浮锁面板淡出并彻底移除
+          // 解锁成功：先露出正文，再让悬浮锁面板淡出，最后直接把整个面板从页面删掉，
+          // 这样锁和输入框彻底消失，不会占文章的版面（也不再依赖 hidden 属性）。
           body.hidden = false;
           document.body.style.overflow = '';
+          gate.style.pointerEvents = 'none';
           gate.style.animation = 'none';
-          gate.style.transition = 'opacity 0.35s ease';
+          gate.style.transition = 'opacity 0.3s ease';
           gate.style.opacity = '0';
           setTimeout(() => {
-            gate.hidden = true;
-          }, 350);
+            gate.remove();
+          }, 320);
         } catch {
           err.textContent = '密码错误，请重试';
           if (unlockBtn) unlockBtn.disabled = false;

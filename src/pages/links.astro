@@ -62,10 +62,20 @@ import { links } from '../data/links';
 </Base>
 
 <script>
-  // 友链点击炫酷跳转：头像从卡片位置缓缓飞到屏幕中央，边飞边放大旋转，
-  // 用 requestAnimationFrame 自己逐帧驱动 2 秒，帧真正走完才跳转（不依赖 transitionend，不会被提前触发）。
-  const DURATION = 2000;
-  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  // 友链点击炫酷跳转：头像飞到屏幕中央 → 边飞边加速旋转 → 到中心高速转 → 慢慢停下 → 跳转。
+  // 用 requestAnimationFrame 逐帧驱动，满 2.2 秒、旋转真正停住才跳转。
+  const DURATION = 2200; // 总时长
+  const T_ARRIVE = 0.42; // 0~42% 飞抵中心并放大，之后只旋转
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  // 旋转曲线：飞向中心时加速，到中心后减速，最后慢慢停住
+  const spinCurve = (t) => {
+    if (t < T_ARRIVE) {
+      const u = t / T_ARRIVE;
+      return 0.5 * u * u; // 加速段
+    }
+    const u = (t - T_ARRIVE) / (1 - T_ARRIVE);
+    return 0.5 + 0.5 * (1 - Math.pow(1 - u, 2)); // 减速段
+  };
 
   const cards = document.querySelectorAll('.link-card');
   cards.forEach((card) => {
@@ -96,7 +106,7 @@ import { links } from '../data/links';
       });
       document.body.appendChild(ghost);
 
-      // 中央光环（CSS 过渡自己跑）
+      // 中央扩散的光环（CSS 过渡自己跑，淡淡的）
       const ring = document.createElement('div');
       ring.className = 'link-zoom-ring';
       document.body.appendChild(ring);
@@ -115,15 +125,14 @@ import { links } from '../data/links';
         window.location.href = url;
       };
 
-      // 逐帧驱动：0 → 2 秒，位置/缩放/旋转/发光一起变；t 到 1（满 2 秒）才跳转
+      // 逐帧驱动：位移/缩放只在前 42% 完成，旋转全程（加速→减速停下），最后一帧才跳转
       const start = performance.now();
       const frame = (now) => {
         const t = Math.min(1, (now - start) / DURATION);
-        const k = easeInOut(t);
+        const k = easeOutCubic(Math.min(1, t / T_ARRIVE));
+        const spin = 1080 * spinCurve(t);
         ghost.style.transform =
-          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 9 * k}) rotate(${360 * k}deg)`;
-        ghost.style.filter = `blur(${k}px) brightness(${1 + 0.35 * k})`;
-        ghost.style.boxShadow = `0 0 ${120 * k}px var(--bg-glow)`;
+          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 1.7 * k}) rotate(${spin}deg)`;
         if (t < 1) {
           requestAnimationFrame(frame);
         } else {
