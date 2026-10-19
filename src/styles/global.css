@@ -1452,10 +1452,11 @@ html:not([data-theme="dark"]) .icon-sun {
   position: fixed;
   inset: 0;
   z-index: 302;
-  background: var(--bg);
+  /* 主题蓝的传送门闪光：中心亮、四周淡 */
+  background: radial-gradient(circle at center, var(--bg-top), var(--bg) 72%);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.16s ease;
+  transition: opacity 0.15s ease;
 }
 
 .link-zoom-flash.on {

@@ -63,7 +63,7 @@ import { links } from '../data/links';
 
 <script>
   // 友链点击炫酷跳转：头像从卡片位置“嗖”地飞到屏幕中央，放大旋转 + 模糊增亮，
-  // 中央展开光环，白光一闪后跳转目标网站。
+  // 中央展开光环，头像快飞到中心时白光一闪，然后跳转目标网站。
   const cards = document.querySelectorAll('.link-card');
   cards.forEach((card) => {
     card.addEventListener('click', (e) => {
@@ -92,32 +92,39 @@ import { links } from '../data/links';
         margin: '0',
       });
       document.body.appendChild(ghost);
-      void ghost.offsetWidth;
 
-      // 飞到屏幕中央：放大 + 旋转 + 模糊增亮
-      const cx = window.innerWidth / 2 - rect.left - rect.width / 2;
-      const cy = window.innerHeight / 2 - rect.top - rect.height / 2;
-      ghost.style.transition =
-        'transform 0.5s cubic-bezier(0.6, 0, 0.2, 1), filter 0.5s ease, box-shadow 0.5s ease';
-      ghost.style.transform = `translate(${cx}px, ${cy}px) scale(8) rotate(9deg)`;
-      ghost.style.filter = 'blur(8px) brightness(1.6)';
-      ghost.style.boxShadow = '0 0 90px var(--bg-glow)';
-
-      // 中央扩散的光环
+      // 中央光环
       const ring = document.createElement('div');
       ring.className = 'link-zoom-ring';
       document.body.appendChild(ring);
-      requestAnimationFrame(() => ring.classList.add('on'));
 
-      // 白光一闪（跟随主题色）
-      const flash = document.createElement('div');
-      flash.className = 'link-zoom-flash';
-      document.body.appendChild(flash);
-      requestAnimationFrame(() => flash.classList.add('on'));
+      const cx = window.innerWidth / 2 - rect.left - rect.width / 2;
+      const cy = window.innerHeight / 2 - rect.top - rect.height / 2;
+
+      // 双 rAF：先让浏览器渲染出头像在原始位置，再切到目标状态，
+      // 保证“飞向中央”的过渡动画一定触发（不会直接跳到终点）。
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          ring.classList.add('on');
+          ghost.style.transition =
+            'transform 0.5s cubic-bezier(0.6, 0, 0.2, 1), filter 0.5s ease, box-shadow 0.5s ease';
+          ghost.style.transform = `translate(${cx}px, ${cy}px) scale(9) rotate(9deg)`;
+          ghost.style.filter = 'blur(5px) brightness(1.7)';
+          ghost.style.boxShadow = '0 0 90px var(--bg-glow)';
+        });
+      });
+
+      // 头像快飞到中心时，白光才一闪（避免一上来就是白屏，把飞行动画盖住）
+      setTimeout(() => {
+        const flash = document.createElement('div');
+        flash.className = 'link-zoom-flash';
+        document.body.appendChild(flash);
+        requestAnimationFrame(() => flash.classList.add('on'));
+      }, 340);
 
       setTimeout(() => {
         window.location.href = url;
-      }, 520);
+      }, 600);
     });
   });
 </script>
