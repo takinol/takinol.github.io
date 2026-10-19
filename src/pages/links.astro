@@ -62,43 +62,53 @@ import { links } from '../data/links';
 </Base>
 
 <script>
-  // 友链点击跳转：头像极速飞向屏幕中央，一路擦出摩擦火花，撞到中心爆一圈火花后跳转。
-  // 用 requestAnimationFrame 逐帧驱动，满 DURATION 才跳转（不会提前）。
+  // 友链点击跳转：头像极速飞向屏幕中央，边飞边被"拉扯"变形（沿运动方向夸张拉伸、垂直压扁），
+  // 一路从边缘喷出高温火线火花，撞到中心爆一圈，最后跳转。
+  // 全程 requestAnimationFrame 逐帧驱动，满 DURATION 才跳转。
   const DURATION = 720;
-  const SPARK_COLORS = ['#ffd166', '#ffb347', '#fff3b0', '#ff8c42', '#ffe9a8'];
+  const SPARK_COLORS = ['#fff6c2', '#ffd166', '#ffb347', '#ff9f1c', '#ff6b35'];
+
   const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -9 * t));
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
-  // 在 (x, y) 位置冒一颗火花
-  function spark(x, y, spread) {
+  // 一颗「火线」火花：细长条，沿 ang 方向甩出 + 下坠 + 拉长后收缩消失
+  function spark(x, y, ang, speed) {
     const s = document.createElement('span');
     s.className = 'link-spark';
-    const size = 2 + Math.random() * 3.5;
+    const len = 8 + Math.random() * 16;
+    const thick = 1 + Math.random() * 1.9;
     const color = SPARK_COLORS[(Math.random() * SPARK_COLORS.length) | 0];
     Object.assign(s.style, {
       left: x + 'px',
       top: y + 'px',
-      width: size + 'px',
-      height: size + 'px',
-      background: color,
-      boxShadow: '0 0 ' + (6 + size * 2) + 'px ' + color,
+      width: len + 'px',
+      height: thick + 'px',
+      marginTop: -(thick / 2) + 'px',
+      background: 'linear-gradient(90deg, #ffffff, ' + color + ')',
+      boxShadow: '0 0 7px ' + color + ', 0 0 18px ' + color + '66',
     });
     document.body.appendChild(s);
-    const ang = Math.random() * Math.PI * 2;
-    const dist = 14 + Math.random() * spread;
-    const dx = Math.cos(ang) * dist;
-    const dy = Math.sin(ang) * dist;
-    const anim = s.animate(
+    const dist = speed * (0.55 + Math.random() * 0.95);
+    const dur = 230 + Math.random() * 320;
+    const drop = 14 + Math.random() * 34;
+    s.animate(
       [
-        { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+        { transform: 'rotate(' + ang + 'rad) translateX(0) scaleX(1)', opacity: 1 },
         {
-          transform: 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.15)',
+          transform:
+            'rotate(' + ang + 'rad) translateX(' + dist * 0.62 + 'px) translateY(' + drop * 0.35 + 'px) scaleX(0.72)',
+          opacity: 0.85,
+          offset: 0.6,
+        },
+        {
+          transform:
+            'rotate(' + ang + 'rad) translateX(' + dist + 'px) translateY(' + drop + 'px) scaleX(0.06)',
           opacity: 0,
         },
       ],
-      { duration: 200 + Math.random() * 260, easing: 'cubic-bezier(.12,.7,.2,1)' }
-    );
-    anim.onfinish = () => s.remove();
+      { duration: dur, easing: 'linear' }
+    ).onfinish = () => s.remove();
   }
 
   const cards = document.querySelectorAll('.link-card');
@@ -116,8 +126,9 @@ import { links } from '../data/links';
       const rect = avatar.getBoundingClientRect();
       const baseX = rect.left + rect.width / 2;
       const baseY = rect.top + rect.height / 2;
+      const baseR = rect.width / 2;
 
-      // 幽灵头像
+      // 幽灵头像（矩阵变换会直接作用在它身上）
       const ghost = avatar.cloneNode(true);
       ghost.classList.add('link-zoom-ghost');
       const gImg = ghost.querySelector('img');
@@ -140,8 +151,6 @@ import { links } from '../data/links';
 
       const cx = window.innerWidth / 2 - baseX;
       const cy = window.innerHeight / 2 - baseY;
-      const centerX = baseX + cx;
-      const centerY = baseY + cy;
 
       let jumped = false;
       const go = () => {
@@ -153,27 +162,82 @@ import { links } from '../data/links';
         window.location.href = url;
       };
 
+      // 运动方向（由上一帧位置差算出来，越准越好）
+      let lastX = baseX;
+      let lastY = baseY;
+      let ux = 1;
+      let uy = 0;
       let burst = false;
       const start = performance.now();
+
       const frame = (now) => {
         const t = Math.min(1, (now - start) / DURATION);
-        const k = easeOutExpo(t);
-        const spin = 900 * easeOutCubic(t);
-        ghost.style.transform =
-          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 1.8 * k}) rotate(${spin}deg)`;
+        const k = easeOutExpo(t); // 位移进度：起步极快
+        const spin = 900 * easeOutCubic(t); // 自转角度
 
-        // 沿途擦出火花（越接近中心越少）
         const px = baseX + cx * k;
         const py = baseY + cy * k;
-        if (t < 0.9) spark(px, py, 60);
-        if (t < 0.35) spark(px, py, 36);
+        const grow = 1 + 1.8 * k; // 整体放大
 
-        // 快撞到中心时爆一圈火花
-        if (!burst && t >= 0.85) {
-          burst = true;
-          for (let i = 0; i < 16; i++) spark(centerX, centerY, 100);
+        // —— 算出运动方向与速度 ——
+        const vx = px - lastX;
+        const vy = py - lastY;
+        const speed = Math.hypot(vx, vy);
+        if (speed > 0.4) {
+          ux = vx / speed;
+          uy = vy / speed;
+        }
+        const speedNorm = clamp(speed / 55, 0, 1);
+
+        // —— 线性变换（矩阵）：沿运动方向夸张拉伸 + 垂直方向压扁（面积近似守恒）——
+        // 脉动让形变"忽长忽短"，看起来像被高速扯开
+        const wob = 0.5 + 0.5 * Math.sin(t * Math.PI * 5);
+        const kpar = 1 + 1.3 * speedNorm + 0.55 * wob; // 平行方向：拉伸（峰值约 4.8:1）
+        const kperp = 1 / Math.sqrt(kpar); // 垂直方向：压扁
+        const sxx = kpar * ux * ux + kperp * (1 - ux * ux);
+        const sxy = (kpar - kperp) * ux * uy;
+        const syy = kpar * uy * uy + kperp * (1 - uy * uy);
+        // 再叠加自转 R，得到最终矩阵 M = R · S
+        const r = (spin * Math.PI) / 180;
+        const cr = Math.cos(r);
+        const sr = Math.sin(r);
+        const a = (cr * sxx - sr * sxy) * grow;
+        const b = (sr * sxx + cr * sxy) * grow;
+        const c = (cr * sxy - sr * syy) * grow;
+        const d = (sr * sxy + cr * syy) * grow;
+        ghost.style.transform =
+          'translate(' + cx * k + 'px,' + cy * k + 'px) matrix(' + a + ',' + b + ',' + c + ',' + d + ',0,0)';
+
+        // —— 沿运动反方向，从头像边缘喷火线 ——
+        const backAng = Math.atan2(-uy, -ux);
+        const emit = t < 0.92 ? (speedNorm > 0.35 ? 2 : 1) : 0;
+        for (let i = 0; i < emit; i++) {
+          const rim = Math.random() * Math.PI * 2;
+          const rad = baseR * grow * 0.82;
+          spark(
+            px + Math.cos(rim) * rad,
+            py + Math.sin(rim) * rad,
+            backAng + (Math.random() - 0.5) * 1.6,
+            45 + Math.random() * 95
+          );
         }
 
+        // —— 快撞到中心时爆一圈火线 ——
+        if (!burst && t >= 0.86) {
+          burst = true;
+          for (let i = 0; i < 28; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            spark(
+              baseX + cx,
+              baseY + cy,
+              ang,
+              90 + Math.random() * 150
+            );
+          }
+        }
+
+        lastX = px;
+        lastY = py;
         if (t < 1) {
           requestAnimationFrame(frame);
         } else {
