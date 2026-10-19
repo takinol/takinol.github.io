@@ -38,7 +38,7 @@ export const links = [
     name: 'Ray',
     desc: '好GG',
     url: 'https://ruijian-huang.github.io/',
-    avatar: '/images/rjgg.jpg',
+    avatar: '/images/zi.jpg',
   },
     {
     name: '磨糖',
