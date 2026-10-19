@@ -69,7 +69,6 @@ import { links } from '../data/links';
   const SPARK_COLORS = ['#fff6c2', '#ffd166', '#ffb347', '#ff9f1c', '#ff6b35'];
 
   const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -9 * t));
-  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
   // 一颗「火线」火花：细长条，沿 ang 方向甩出 + 下坠 + 拉长后收缩消失
@@ -173,7 +172,8 @@ import { links } from '../data/links';
       const frame = (now) => {
         const t = Math.min(1, (now - start) / DURATION);
         const k = easeOutExpo(t); // 位移进度：起步极快
-        const spin = 900 * easeOutCubic(t); // 自转角度
+        // 自转：整整 5 圈（1800°），t=1 时正好是 360 的整数倍 → 最终回到正位，不会倒着
+        const spin = 1800 * (1 - Math.pow(1 - t, 2));
 
         const px = baseX + cx * k;
         const py = baseY + cy * k;

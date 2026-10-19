@@ -1635,16 +1635,16 @@ html:not([data-theme="dark"]) .icon-sun {
   height: 22px;
   margin: -11px 0 0 -11px;
   border-radius: 50%;
-  border: 2px solid var(--accent);
+  border: 2.5px solid var(--accent);
   opacity: 0;
   transform: scale(0);
   z-index: 300;
   pointer-events: none;
-  transition: transform 0.55s cubic-bezier(0.15, 0.7, 0.25, 1),
-    opacity 0.5s ease;
+  transition: transform 0.55s cubic-bezier(0.15, 0.7, 0.25, 1), opacity 0.5s ease;
 }
 
 .link-zoom-ring.on {
   transform: scale(22);
-  opacity: 0.3;
+  /* 加深：透明度从 0.3 提到 0.55，边框也加粗，颜色更实 */
+  opacity: 0.55;
 }

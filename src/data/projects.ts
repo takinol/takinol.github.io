@@ -4,7 +4,7 @@
 
 export const projects = [
   {
-    name: '我的博客',
+    name: 'takino',
     desc: '',
     url: 'https://github.com/takinol/takinol.github.io',
   },
