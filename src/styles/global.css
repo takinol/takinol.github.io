@@ -1359,60 +1359,96 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--text-muted);
 }
 
-/* ---------- 加密文章解锁界面 ---------- */
+/* ---------- 加密文章解锁界面（紫色危机感） ---------- */
 .pw-gate {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  /* 中间偏上：整块居中 + 底部留白把内容往上推 */
+  min-height: 46vh;
+  padding: 20px 20px 14vh;
   text-align: center;
-  padding: 56px 20px 64px;
 }
 
+/* 锁图标：紫色呼吸光晕，营造“危险/机密”的氛围 */
 .pw-lock {
-  font-size: 44px;
+  font-size: 46px;
   line-height: 1;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  animation: pwPulse 2.4s ease-in-out infinite;
 }
 
-.pw-title {
-  margin: 0 0 8px;
+@keyframes pwPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.45));
+  }
+  50% {
+    transform: translateY(-3px) scale(1.06);
+    filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.9));
+  }
 }
 
-.pw-sub {
-  color: var(--text-muted);
-  margin: 0 0 20px;
-}
-
+/* 输入框所在的小面板：紫色边框 + 紫色光晕 */
 .pw-form {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+  padding: 20px 24px;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: 14px;
+  background: radial-gradient(
+      circle at 50% 0%,
+      rgba(124, 58, 237, 0.14),
+      transparent 70%
+    ),
+    var(--bg-elevated);
+  box-shadow: 0 24px 70px -24px rgba(124, 58, 237, 0.6),
+    0 0 0 1px rgba(168, 85, 247, 0.08) inset;
 }
 
 .pw-input {
-  padding: 9px 12px;
-  border: 1px solid var(--border);
+  padding: 11px 14px;
+  border: 1.5px solid rgba(168, 85, 247, 0.4);
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: rgba(124, 58, 237, 0.06);
   color: var(--text);
   font-size: 14px;
-  width: 200px;
+  width: 220px;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.pw-input::placeholder {
+  color: rgba(168, 85, 247, 0.8);
+  letter-spacing: 1px;
 }
 
 .pw-input:focus {
-  border-color: var(--accent);
+  border-color: #a855f7;
+  background: rgba(124, 58, 237, 0.12);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22),
+    0 0 24px rgba(168, 85, 247, 0.4);
 }
 
 .pw-btn {
-  padding: 9px 18px;
+  padding: 11px 20px;
   border: none;
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--bg);
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
   font-size: 14px;
   cursor: pointer;
+  box-shadow: 0 8px 24px -8px rgba(124, 58, 237, 0.9);
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.pw-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 10px 30px -8px rgba(168, 85, 247, 1);
 }
 
 .pw-btn:disabled {
@@ -1421,10 +1457,27 @@ html:not([data-theme="dark"]) .icon-sun {
 }
 
 .pw-error {
-  color: #d64541;
+  color: #f0426b;
   font-size: 13px;
   min-height: 18px;
-  margin: 12px 0 0;
+  margin: 14px 0 0;
+  text-shadow: 0 0 12px rgba(240, 66, 107, 0.5);
+}
+
+@media (max-width: 480px) {
+  .pw-gate {
+    min-height: 40vh;
+    padding-bottom: 10vh;
+  }
+  .pw-form {
+    flex-direction: column;
+    width: 100%;
+    max-width: 320px;
+  }
+  .pw-input,
+  .pw-btn {
+    width: 100%;
+  }
 }
 
 /* ---------- 友链点击跳转动画 ---------- */
@@ -1449,25 +1502,11 @@ html:not([data-theme="dark"]) .icon-sun {
   transform: scale(0);
   z-index: 300;
   pointer-events: none;
-  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.45s ease;
+  transition: transform 1.8s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 1.5s ease;
 }
 
 .link-zoom-ring.on {
-  transform: scale(32);
-  opacity: 0.45;
-}
-
-.link-zoom-flash {
-  position: fixed;
-  inset: 0;
-  z-index: 302;
-  /* 主题蓝的传送门闪光：中心亮、四周淡 */
-  background: radial-gradient(circle at center, var(--bg-top), var(--bg) 72%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-
-.link-zoom-flash.on {
-  opacity: 1;
+  transform: scale(34);
+  opacity: 0.4;
 }

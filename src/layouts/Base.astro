@@ -142,7 +142,12 @@ const pageDescription = description ?? site.description;
         '#ff9f43',
       ];
       document.querySelectorAll('a, button').forEach((el) => {
-        if (el.classList.contains('brand') || el.classList.contains('lightbox-btn')) return;
+        if (
+          el.classList.contains('brand') ||
+          el.classList.contains('lightbox-btn') ||
+          el.classList.contains('pw-btn')
+        )
+          return;
         el.setAttribute('data-hov', '');
         el.addEventListener('mouseenter', () => {
           // 每次进入都重新随机，而不是刷新页面才变
