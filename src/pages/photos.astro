@@ -1,18 +1,73 @@
 ---
 import Base from '../layouts/Base.astro';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { photoNotes } from '../data/photos';
 
 // 照片墙内容 = public/photos/ 文件夹里的所有图片
 // （构建时 cwd 就是仓库根目录，所以从这里读 public/photos 是可靠的）
 const photosDir = join(process.cwd(), 'public', 'photos');
+
+// 读图片文件头拿宽高（png/jpg/gif/webp），不需要额外依赖
+function imageSize(filePath: string): { w: number; h: number } | null {
+  try {
+    const buf = readFileSync(filePath);
+    if (buf.length < 24) return null;
+    // PNG
+    if (buf[0] === 0x89 && buf[1] === 0x50) {
+      return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+    }
+    // GIF
+    if (buf[0] === 0x47 && buf[1] === 0x49) {
+      return { w: buf.readUInt16LE(6), h: buf.readUInt16LE(8) };
+    }
+    // WebP
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) {
+      const chunk = buf.toString('ascii', 12, 16);
+      if (chunk === 'VP8X') return { w: 1 + buf.readUIntLE(24, 3), h: 1 + buf.readUIntLE(27, 3) };
+      if (chunk === 'VP8 ') return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+      if (chunk === 'VP8L') {
+        const b = buf.readUInt32LE(21);
+        return { w: (b & 0x3fff) + 1, h: ((b >> 14) & 0x3fff) + 1 };
+      }
+    }
+    // JPEG：扫 SOF 标记
+    let i = 2;
+    while (i < buf.length - 9) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      if (marker === 0xd8 || marker === 0xff) { i++; continue; }
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 const files = readdirSync(photosDir)
   .filter((f) => /\.(jpe?g|png|gif|webp)$/i.test(f))
   .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
-  .map((f) => ({
-    src: '/photos/' + encodeURI(f),
-    name: f.replace(/\.[^.]+$/, ''),
-  }));
+  .map((f) => {
+    const base = f.replace(/\.[^.]+$/, '');
+    const size = imageSize(join(photosDir, f));
+    // 按图片长宽比决定显示大小：竖图窄、横图宽、方图适中（都有限制，不会太大）
+    let sz: 's' | 'm' | 'l' = 'm';
+    if (size) {
+      const aspect = size.w / size.h;
+      if (aspect < 0.7) sz = 's';
+      else if (aspect > 1.45) sz = 'l';
+    }
+    return {
+      src: '/photos/' + encodeURI(f),
+      name: base,
+      note: photoNotes[base] ?? '',
+      sz,
+    };
+  });
 ---
 
 <Base title="照片" description="小猫的照片墙">
@@ -33,7 +88,12 @@ const files = readdirSync(photosDir)
         </p>
       ) : (
         files.map((p, i) => (
-          <figure class="photo" data-name={p.name} style={`--i:${i}`}>
+          <figure
+            class={`photo w-${p.sz}`}
+            data-name={p.name}
+            data-note={p.note}
+            style={`--i:${i}`}
+          >
             <img src={p.src} alt={p.name} loading="lazy" draggable="false" />
             <figcaption>{p.name}</figcaption>
           </figure>
@@ -48,10 +108,12 @@ const files = readdirSync(photosDir)
     <button class="lightbox-btn lightbox-close" data-close aria-label="关闭" title="关闭">×</button>
     <button class="lightbox-btn lightbox-prev" data-prev aria-label="上一张" title="上一张">‹</button>
     <button class="lightbox-btn lightbox-next" data-next aria-label="下一张" title="下一张">›</button>
-    <figure class="lightbox-figure">
+
+    <div class="lightbox-stage" id="lightbox-stage">
       <img class="lightbox-img" id="lightbox-img" src="" alt="" />
       <figcaption class="lightbox-cap" id="lightbox-cap"></figcaption>
-    </figure>
+    </div>
+    <div class="sticky-note" id="lightbox-note"></div>
   </div>
 </Base>
 
@@ -99,13 +161,13 @@ const files = readdirSync(photosDir)
     padding: 2px 6px;
   }
 
-  /* 一张照片 = 一个小相框 */
+  /* 一张照片 = 一个小相框。宽度按长宽比分三档，竖图/横图/方图不一样大 */
   .photo {
     position: absolute;
     left: 0;
     top: 0;
     margin: 0;
-    width: clamp(130px, 22vw, 190px);
+    width: var(--pw, 190px);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -119,6 +181,16 @@ const files = readdirSync(photosDir)
     transform: translate(var(--x, 0px), var(--y, 0px)) rotate(var(--rot, 0deg));
     transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.2s ease;
     opacity: 0;
+  }
+
+  .photo.w-s {
+    --pw: clamp(100px, 15vw, 150px);
+  }
+  .photo.w-m {
+    --pw: clamp(140px, 21vw, 190px);
+  }
+  .photo.w-l {
+    --pw: clamp(170px, 30vw, 250px);
   }
 
   .photo img {
@@ -168,14 +240,34 @@ const files = readdirSync(photosDir)
     transition: none;
   }
 
+  /* 放下照片时的小弹跳：先轻轻弹起一点再落稳，有种“啪嗒放下去”的感觉 */
+  .photo.settle {
+    transition: none;
+    animation: dropSettle 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  @keyframes dropSettle {
+    0% {
+      transform: translate(var(--x), var(--y)) rotate(var(--rot)) scale(1.05);
+    }
+    45% {
+      transform: translate(var(--x), calc(var(--y) - 14px)) rotate(calc(var(--rot) + 3deg))
+        scale(1.02);
+    }
+    75% {
+      transform: translate(var(--x), calc(var(--y) + 4px)) rotate(var(--rot)) scale(1);
+    }
+    100% {
+      transform: translate(var(--x), var(--y)) rotate(var(--rot)) scale(1);
+    }
+  }
+
   /* ---------- 点击放大查看层 ---------- */
+  /* 背景：高斯模糊（把后面的照片墙模糊掉），不盖黑纱 */
   .lightbox {
     position: fixed;
     inset: 0;
     z-index: 200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -189,43 +281,103 @@ const files = readdirSync(photosDir)
   .lightbox-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(8, 10, 20, 0.8);
-    backdrop-filter: blur(8px);
+    background: transparent;
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
   }
 
-  .lightbox-figure {
-    position: relative;
-    max-width: 92vw;
-    max-height: 86vh;
-    margin: 0;
-    text-align: center;
+  /* 舞台：飞入/飞出动画作用在这层，宽高由 JS 按图片实际比例设置 */
+  .lightbox-stage {
+    position: fixed;
+    left: 0;
+    top: 0;
+    will-change: transform;
   }
 
   .lightbox-img {
     display: block;
-    max-width: 92vw;
-    max-height: 80vh;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     border-radius: 12px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
-    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
   }
 
   .lightbox-cap {
     color: rgba(255, 255, 255, 0.85);
     text-align: center;
-    margin-top: 14px;
+    margin-top: 12px;
     font-size: 14px;
   }
 
-  .lightbox-btn {
+  /* 悬浮：照片放大后轻轻上下浮动 */
+  .lightbox-stage.float {
+    animation: floatY 4.5s ease-in-out infinite;
+  }
+
+  @keyframes floatY {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  /* 便利贴：黄色贴纸，从照片右上角弹出来，比照片晚一点出现（毫秒级错开） */
+  .sticky-note {
+    position: fixed;
+    z-index: 4;
+    max-width: 240px;
+    padding: 14px 16px;
+    background: #fff3b0;
+    color: #5c4a00;
+    font-size: 14px;
+    line-height: 1.7;
+    border-radius: 4px;
+    box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.35);
+    transform: rotate(-2deg);
+    opacity: 0;
+    pointer-events: auto;
+  }
+
+  .sticky-note::before {
+    /* 便利贴顶部那一道撕胶带的感觉 */
+    content: '';
     position: absolute;
-    z-index: 3;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 70px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+
+  .lightbox.show .sticky-note {
+    animation: noteIn 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.18s backwards;
+  }
+
+  @keyframes noteIn {
+    from {
+      opacity: 0;
+      transform: rotate(-6deg) scale(0.6) translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: rotate(-2deg) scale(1) translateY(0);
+    }
+  }
+
+  .lightbox-btn {
+    position: fixed;
+    z-index: 5;
     width: 44px;
     height: 44px;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.18);
     color: #fff;
     font-size: 24px;
     line-height: 1;
@@ -237,7 +389,7 @@ const files = readdirSync(photosDir)
   }
 
   .lightbox-btn:hover {
-    background: rgba(255, 255, 255, 0.26);
+    background: rgba(255, 255, 255, 0.32);
   }
 
   .lightbox-close {
@@ -263,8 +415,9 @@ const files = readdirSync(photosDir)
     .wall {
       height: calc(100dvh - 60px - 130px);
     }
-    .photo {
-      width: clamp(110px, 40vw, 160px);
+    .sticky-note {
+      max-width: 180px;
+      font-size: 13px;
     }
   }
 </style>
@@ -285,10 +438,10 @@ const files = readdirSync(photosDir)
     }
     const rand = mulberry32(20261017);
 
-    // 1) 散开摆放：随机位置 + 随机角度
+    // 1) 散开摆放：随机位置 + 随机角度（宽度已由 CSS 按长宽比分好）
     const w = wall.clientWidth;
     const h = wall.clientHeight;
-    photos.forEach((el, i) => {
+    photos.forEach((el) => {
       const pw = el.offsetWidth;
       const ph = el.offsetHeight;
       const x = rand() * Math.max(0, w - pw);
@@ -300,12 +453,15 @@ const files = readdirSync(photosDir)
       el.classList.add('in');
     });
 
-    // 2) 拖拽 + 点击放大
+    // 2) 拖拽 + 放下弹跳 + 点击放大
     let zTop = 10;
     const bringToFront = (el: HTMLElement) => {
       zTop += 1;
       el.style.zIndex = String(zTop);
     };
+
+    const getX = (el: HTMLElement) => parseFloat(el.style.getPropertyValue('--x')) || 0;
+    const getY = (el: HTMLElement) => parseFloat(el.style.getPropertyValue('--y')) || 0;
 
     photos.forEach((el: HTMLElement) => {
       let dragging = false;
@@ -315,16 +471,13 @@ const files = readdirSync(photosDir)
         baseX = 0,
         baseY = 0;
 
-      const getX = () => parseFloat(el.style.getPropertyValue('--x')) || 0;
-      const getY = () => parseFloat(el.style.getPropertyValue('--y')) || 0;
-
       el.addEventListener('pointerdown', (e) => {
         dragging = true;
         moved = false;
         startX = e.clientX;
         startY = e.clientY;
-        baseX = getX();
-        baseY = getY();
+        baseX = getX(el);
+        baseY = getY(el);
         el.setPointerCapture(e.pointerId);
         el.classList.add('dragging');
         bringToFront(el);
@@ -345,15 +498,23 @@ const files = readdirSync(photosDir)
       const endDrag = (e: PointerEvent) => {
         if (!dragging) return;
         dragging = false;
-        el.classList.remove('dragging');
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         if (moved) {
-          // 落定：更新基准位置，清掉拖拽中的内联 transform，让过渡平滑归位
+          // 落定：更新基准位置，清掉拖拽中的内联 transform，再播一小段弹跳动画
+          el.classList.remove('dragging');
           el.style.setProperty('--x', (baseX + dx).toFixed(1) + 'px');
           el.style.setProperty('--y', (baseY + dy).toFixed(1) + 'px');
           el.style.transform = '';
+          el.classList.add('settle');
+          const onSettle = (ev: AnimationEvent) => {
+            if (ev.target !== el) return;
+            el.classList.remove('settle');
+            el.removeEventListener('animationend', onSettle);
+          };
+          el.addEventListener('animationend', onSettle);
         } else {
+          el.classList.remove('dragging');
           openLightbox(el);
         }
       };
@@ -361,55 +522,142 @@ const files = readdirSync(photosDir)
       el.addEventListener('pointercancel', endDrag);
     });
 
-    // 3) 大图查看
+    // 3) 大图查看：照片从墙上的位置旋转飞到屏幕中间；关闭时飞回去
     const lightbox = document.getElementById('lightbox') as HTMLElement;
+    const stage = document.getElementById('lightbox-stage') as HTMLElement;
     const lbImg = document.getElementById('lightbox-img') as HTMLImageElement;
     const lbCap = document.getElementById('lightbox-cap') as HTMLElement;
+    const lbNote = document.getElementById('lightbox-note') as HTMLElement;
     let current = -1;
+    let animating = false;
+
+    // 按图片原始比例算展示尺寸（有上限，不会太大）
+    const fitSize = (nw: number, nh: number) => {
+      let dw = Math.min(nw, window.innerWidth * 0.9, 1200);
+      let dh = (dw * nh) / nw;
+      if (dh > window.innerHeight * 0.8) {
+        dh = window.innerHeight * 0.8;
+        dw = (dh * nw) / nh;
+      }
+      return { dw, dh };
+    };
+
+    const fill = (el: HTMLElement) => {
+      lbImg.src = (el.querySelector('img') as HTMLImageElement).src;
+      lbCap.textContent = el.dataset.name || '';
+      lbNote.textContent = el.dataset.note || '';
+      lbNote.style.display = el.dataset.note ? '' : 'none';
+    };
+
+    // 便利贴贴在照片右上角外侧（按居中后的最终位置算，不依赖过渡中的动画位置）
+    const placeNote = () => {
+      const dw = stage.offsetWidth;
+      const dh = stage.offsetHeight;
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const left = Math.min(cx + dw / 2 + 16, window.innerWidth - 260);
+      lbNote.style.left = Math.max(16, left) + 'px';
+      lbNote.style.top = Math.max(20, cy - dh / 2 - 8) + 'px';
+    };
 
     const openLightbox = (el: HTMLElement) => {
       current = photos.indexOf(el);
-      show();
-    };
+      const thumbImg = el.querySelector('img') as HTMLImageElement;
+      const nw = thumbImg.naturalWidth || 1000;
+      const nh = thumbImg.naturalHeight || 750;
+      const { dw, dh } = fitSize(nw, nh);
+      stage.style.width = dw + 'px';
+      stage.style.height = dh + 'px';
+      fill(el);
 
-    const show = () => {
-      const el = photos[current];
-      lbImg.src = (el.querySelector('img') as HTMLImageElement).src;
-      lbCap.textContent = el.dataset.name || '';
-      lbImg.style.transition = 'none';
-      lbImg.style.opacity = '0';
-      lbImg.style.transform = 'scale(0.92)';
+      // 先把舞台放到屏幕中心（identity 位置），FLIP 位移再相对它计算
+      const ccx = window.innerWidth / 2;
+      const ccy = window.innerHeight / 2;
+      stage.style.left = ccx - dw / 2 + 'px';
+      stage.style.top = ccy - dh / 2 + 'px';
+
+      // FLIP：从墙上的缩略图位置旋转飞到屏幕中间
+      const tr = el.getBoundingClientRect();
+      const tcx = tr.left + tr.width / 2;
+      const tcy = tr.top + tr.height / 2;
+      const rot = parseFloat(el.style.getPropertyValue('--rot')) || 0;
+      const s = tr.width / dw;
+
+      stage.classList.remove('float');
+      stage.style.transition = 'none';
+      stage.style.opacity = '0';
+      stage.style.transform = `translate(${tcx - ccx}px, ${tcy - ccy}px) rotate(${rot}deg) scale(${s})`;
       lightbox.classList.add('show');
       lightbox.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
+
       requestAnimationFrame(() => {
-        lbImg.style.transition = '';
-        lbImg.style.opacity = '1';
-        lbImg.style.transform = 'scale(1)';
+        requestAnimationFrame(() => {
+          stage.style.transition =
+            'transform 0.55s cubic-bezier(0.22, 0.7, 0.25, 1), opacity 0.2s ease';
+          stage.style.opacity = '1';
+          stage.style.transform = 'translate(0, 0) rotate(0deg) scale(1)';
+          placeNote();
+          const onEnter = (ev: TransitionEvent) => {
+            if (ev.propertyName !== 'transform') return;
+            stage.style.transition = 'none';
+            stage.classList.add('float');
+            stage.removeEventListener('transitionend', onEnter);
+          };
+          stage.addEventListener('transitionend', onEnter);
+        });
       });
     };
 
     const closeLightbox = () => {
+      if (!lightbox.classList.contains('show') || animating) return;
+      if (current < 0) return;
+      const el = photos[current];
+      stage.classList.remove('float');
+      const tr = el.getBoundingClientRect();
+      const tcx = tr.left + tr.width / 2;
+      const tcy = tr.top + tr.height / 2;
+      const ccx = window.innerWidth / 2;
+      const ccy = window.innerHeight / 2;
+      const rot = parseFloat(el.style.getPropertyValue('--rot')) || 0;
+      const s = tr.width / stage.offsetWidth;
+      stage.style.transition = 'transform 0.45s cubic-bezier(0.55, 0, 0.8, 0.4), opacity 0.3s ease';
+      stage.style.transform = `translate(${tcx - ccx}px, ${tcy - ccy}px) rotate(${rot}deg) scale(${s})`;
+      stage.style.opacity = '0';
       lightbox.classList.remove('show');
       lightbox.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
     };
 
+    // 左右切换：快速淡出淡入
     const step = (d: number) => {
+      if (animating) return;
       current = (current + d + photos.length) % photos.length;
       const el = photos[current];
-      lbImg.style.transition = 'none';
-      lbImg.style.opacity = '0';
-      lbImg.style.transform = 'scale(0.96)';
-      requestAnimationFrame(() => {
-        lbImg.src = (el.querySelector('img') as HTMLImageElement).src;
-        lbCap.textContent = el.dataset.name || '';
-        requestAnimationFrame(() => {
-          lbImg.style.transition = '';
-          lbImg.style.opacity = '1';
-          lbImg.style.transform = 'scale(1)';
-        });
-      });
+      const thumbImg = el.querySelector('img') as HTMLImageElement;
+      const nw = thumbImg.naturalWidth || stage.offsetWidth;
+      const nh = thumbImg.naturalHeight || stage.offsetHeight;
+      const { dw, dh } = fitSize(nw, nh);
+      animating = true;
+      stage.classList.remove('float');
+      stage.style.transition = 'transform 0.2s ease, opacity 0.18s ease';
+      stage.style.transform = 'translate(0, 0) rotate(0deg) scale(0.97)';
+      stage.style.opacity = '0';
+      setTimeout(() => {
+        stage.style.width = dw + 'px';
+        stage.style.height = dh + 'px';
+        stage.style.left = window.innerWidth / 2 - dw / 2 + 'px';
+        stage.style.top = window.innerHeight / 2 - dh / 2 + 'px';
+        fill(el);
+        placeNote();
+        stage.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.18s ease';
+        stage.style.transform = 'translate(0, 0) rotate(0deg) scale(1)';
+        stage.style.opacity = '1';
+        setTimeout(() => {
+          animating = false;
+          stage.classList.add('float');
+        }, 260);
+      }, 200);
     };
 
     lightbox.querySelectorAll('[data-close]').forEach((btn) =>
@@ -422,6 +670,9 @@ const files = readdirSync(photosDir)
       if (e.key === 'Escape') closeLightbox();
       if (e.key === 'ArrowLeft') step(-1);
       if (e.key === 'ArrowRight') step(1);
+    });
+    window.addEventListener('resize', () => {
+      if (lightbox.classList.contains('show')) placeNote();
     });
   }
 </script>
