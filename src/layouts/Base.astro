@@ -201,6 +201,26 @@ const pageDescription = description ?? site.description;
       onScroll();
 
       // 访问量：vercount（不蒜子替代）的公开接口，静态博客不需要自建后端
+      // —— 「自己的浏览器不计数」（私密方式，页面上没有任何开关）
+      // 用带私密 token 的网址访问一次，本浏览器就永久不再上报。例如：
+      //   https://takinol.github.io/?nl=xk9T4mQ2
+      // 这个 token 只写在代码里，页面不显示；把它当成你自己的"钥匙"保管好。
+      const NOCOUNT_KEY = 'takinol:nocount';
+      const NOCOUNT_TOKEN = 'xk9T4mQ2';
+      const nologParams = new URLSearchParams(location.search);
+      if (nologParams.get('nl') === NOCOUNT_TOKEN) {
+        try {
+          localStorage.setItem(NOCOUNT_KEY, '1');
+        } catch (e) {}
+        nologParams.delete('nl');
+        const qs = nologParams.toString();
+        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+      }
+      let noCount = false;
+      try {
+        noCount = localStorage.getItem(NOCOUNT_KEY) === '1';
+      } catch (e) {}
+
       const visitEls = Array.from(document.querySelectorAll<HTMLElement>('[data-visit]'));
       if (visitEls.length) {
         const host = location.hostname;
@@ -222,7 +242,8 @@ const pageDescription = description ?? site.description;
           if (cached) fill(JSON.parse(cached));
         } catch (e) {}
 
-        if (!isLocal) {
+        // 本机标记了「不统计」就不上报（也不写访客 cookie）
+        if (!isLocal && !noCount) {
           const uvCookie = 'takinol_uv';
           const seen = document.cookie.split('; ').some((c) => c.startsWith(uvCookie + '='));
           if (!seen) {
