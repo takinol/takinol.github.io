@@ -1359,16 +1359,42 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--text-muted);
 }
 
-/* ---------- 加密文章解锁界面（紫色危机感） ---------- */
+/* ---------- 加密文章解锁界面（紫色危机感 · 悬浮层） ---------- */
+/* 做成盖在页面上的一层“悬浮锁”：解锁后整层消失，露出正常文章 */
 .pw-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* 中间偏上：整块居中 + 底部留白把内容往上推 */
-  min-height: 46vh;
-  padding: 20px 20px 14vh;
+  /* 底部多留白，让面板落在「中间偏上」 */
+  padding: 24px 20px 12vh;
   text-align: center;
+  /* 深紫半透明帷幕 + 模糊，营造被封锁的危机感 */
+  background: rgba(22, 9, 44, 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: pwVeil 0.35s ease both;
+}
+
+/* 关键：解锁后隐藏（.pw-gate 的 display:flex 会覆盖 hidden，必须显式处理） */
+.pw-gate[hidden] {
+  display: none;
+}
+
+.pw-body[hidden] {
+  display: none;
+}
+
+@keyframes pwVeil {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* 锁图标：紫色呼吸光晕，营造“危险/机密”的氛围 */
@@ -1466,8 +1492,7 @@ html:not([data-theme="dark"]) .icon-sun {
 
 @media (max-width: 480px) {
   .pw-gate {
-    min-height: 40vh;
-    padding-bottom: 10vh;
+    padding-bottom: 8vh;
   }
   .pw-form {
     flex-direction: column;

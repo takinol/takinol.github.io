@@ -63,8 +63,10 @@ import { links } from '../data/links';
 
 <script>
   // 友链点击炫酷跳转：头像从卡片位置缓缓飞到屏幕中央，边飞边放大旋转，
-  // 动画完整播完（约 2 秒）后才跳转到目标网站。
+  // 用 requestAnimationFrame 自己逐帧驱动 2 秒，帧真正走完才跳转（不依赖 transitionend，不会被提前触发）。
   const DURATION = 2000;
+  const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
   const cards = document.querySelectorAll('.link-card');
   cards.forEach((card) => {
     card.addEventListener('click', (e) => {
@@ -94,44 +96,41 @@ import { links } from '../data/links';
       });
       document.body.appendChild(ghost);
 
-      // 中央光环
+      // 中央光环（CSS 过渡自己跑）
       const ring = document.createElement('div');
       ring.className = 'link-zoom-ring';
       document.body.appendChild(ring);
+      requestAnimationFrame(() => ring.classList.add('on'));
 
       const cx = window.innerWidth / 2 - rect.left - rect.width / 2;
       const cy = window.innerHeight / 2 - rect.top - rect.height / 2;
 
       let jumped = false;
-      const cleanup = () => {
-        ghost.remove();
-        ring.remove();
-      };
       const go = () => {
         if (jumped) return;
         jumped = true;
-        // 跳转前把动画元素全部清掉，避免“返回”时浏览器缓存的页面残留覆盖层
-        cleanup();
+        // 跳转前把动画元素全部清掉，避免“返回”时缓存的页面残留覆盖层
+        ghost.remove();
+        ring.remove();
         window.location.href = url;
       };
 
-      // 关键：等 transform 过渡真正播完（transitionend）才跳转
-      ghost.addEventListener('transitionend', (ev) => {
-        if (ev.propertyName === 'transform' && ev.target === ghost) go();
-      });
-      // 兜底：极端情况下 transitionend 没触发，也不能卡住
-      setTimeout(go, DURATION + 500);
-
-      // 双 rAF：先渲染初始位置，再切到目标状态，保证过渡动画一定触发
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          ring.classList.add('on');
-          ghost.style.transition = `transform ${DURATION}ms cubic-bezier(0.22, 0.8, 0.2, 1), filter ${DURATION}ms ease, box-shadow ${DURATION}ms ease`;
-          ghost.style.transform = `translate(${cx}px, ${cy}px) scale(10) rotate(360deg)`;
-          ghost.style.filter = 'blur(1px) brightness(1.35)';
-          ghost.style.boxShadow = '0 0 120px var(--bg-glow)';
-        });
-      });
+      // 逐帧驱动：0 → 2 秒，位置/缩放/旋转/发光一起变；t 到 1（满 2 秒）才跳转
+      const start = performance.now();
+      const frame = (now) => {
+        const t = Math.min(1, (now - start) / DURATION);
+        const k = easeInOut(t);
+        ghost.style.transform =
+          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 9 * k}) rotate(${360 * k}deg)`;
+        ghost.style.filter = `blur(${k}px) brightness(${1 + 0.35 * k})`;
+        ghost.style.boxShadow = `0 0 ${120 * k}px var(--bg-glow)`;
+        if (t < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          go();
+        }
+      };
+      requestAnimationFrame(frame);
     });
   });
 

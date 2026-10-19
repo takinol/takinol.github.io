@@ -98,6 +98,8 @@ if (password) {
     const input = document.getElementById('pw-input');
     const err = document.getElementById('pw-error');
     if (payload && gate && body && form) {
+      // 面板是浮层：锁定页面滚动，直到解锁
+      document.body.style.overflow = 'hidden';
       const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -143,8 +145,15 @@ if (password) {
             parent.insertBefore(wrap, table);
             wrap.appendChild(table);
           });
-          gate.hidden = true;
+          // 解锁成功：先露出正文，再让悬浮锁面板淡出并彻底移除
           body.hidden = false;
+          document.body.style.overflow = '';
+          gate.style.animation = 'none';
+          gate.style.transition = 'opacity 0.35s ease';
+          gate.style.opacity = '0';
+          setTimeout(() => {
+            gate.hidden = true;
+          }, 350);
         } catch {
           err.textContent = '密码错误，请重试';
           if (unlockBtn) unlockBtn.disabled = false;
