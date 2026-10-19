@@ -54,12 +54,28 @@ if (password) {
   {encrypted ? (
     <>
       <div class="pw-gate" id="pw-gate">
-        <div class="pw-lock" aria-hidden="true">🔒</div>
-        <form class="pw-form" id="pw-form">
-          <input class="pw-input" id="pw-input" type="password" placeholder="请输入摩斯密码" autocomplete="off" />
-          <button class="pw-btn" type="submit">解锁</button>
-        </form>
-        <p class="pw-error" id="pw-error" aria-live="polite"></p>
+        <div class="pw-panel">
+          <span class="pw-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <svg
+            class="pw-lock"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="4.5" y="10.5" width="15" height="10" rx="1.5"></rect>
+            <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"></path>
+            <circle cx="12" cy="15.5" r="1.1" fill="currentColor" stroke="none"></circle>
+          </svg>
+          <form class="pw-form" id="pw-form">
+            <input class="pw-input" id="pw-input" type="password" placeholder="请输入摩斯密码" autocomplete="off" />
+            <button class="pw-btn" type="submit">解锁</button>
+          </form>
+          <p class="pw-error" id="pw-error" aria-live="polite"></p>
+        </div>
       </div>
       <div class="pw-body" id="post-body" hidden></div>
       <script type="application/json" id="post-cipher" set:html={cipherJson} />

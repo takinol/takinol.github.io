@@ -1359,24 +1359,26 @@ html:not([data-theme="dark"]) .icon-sun {
   color: var(--text-muted);
 }
 
-/* ---------- 加密文章解锁界面（紫色危机感 · 悬浮层） ---------- */
-/* 做成盖在页面上的一层“悬浮锁”：解锁后整层消失，露出正常文章 */
+/* ---------- 加密文章解锁界面（冷峻 · 机密行动感） ---------- */
+/* 做成盖在整页上的一层“封锁”：解锁后整层移除，露出正常文章 */
 .pw-gate {
   position: fixed;
   inset: 0;
   z-index: 60;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   /* 底部多留白，让面板落在「中间偏上」 */
   padding: 24px 20px 12vh;
-  text-align: center;
-  /* 深紫半透明帷幕 + 模糊，营造被封锁的危机感 */
-  background: rgba(22, 9, 44, 0.55);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  animation: pwVeil 0.35s ease both;
+  /* 近黑紫调 + 细密扫描纹理：冷、暗、有压迫感 */
+  background: repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.03) 0 1px,
+      transparent 1px 3px
+    ),
+    radial-gradient(120% 90% at 50% 0%, rgba(88, 28, 135, 0.42), transparent 62%),
+    rgba(6, 3, 10, 0.93);
+  animation: pwVeil 0.3s ease both;
 }
 
 /* 关键：解锁后隐藏（.pw-gate 的 display:flex 会覆盖 hidden，必须显式处理） */
@@ -1397,121 +1399,225 @@ html:not([data-theme="dark"]) .icon-sun {
   }
 }
 
-/* 锁图标：紫色呼吸光晕，营造“危险/机密”的氛围 */
-.pw-lock {
-  font-size: 46px;
-  line-height: 1;
-  margin-bottom: 24px;
-  animation: pwPulse 2.4s ease-in-out infinite;
+/* 面板：直角细边框 + 内发光，像一块终端机面板 */
+.pw-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 36px 36px 26px;
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 12, 34, 0.97),
+    rgba(10, 5, 16, 0.97)
+  );
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65),
+    0 30px 80px -24px rgba(88, 28, 135, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
 }
 
-@keyframes pwPulse {
+/* 面板内缓慢下扫的扫描光 */
+.pw-panel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 45%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(168, 85, 247, 0.14),
+    transparent
+  );
+  animation: pwScan 3.6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes pwScan {
+  0% {
+    transform: translateY(-130%);
+  }
+  100% {
+    transform: translateY(330%);
+  }
+}
+
+/* 四角瞄准框 */
+.pw-corners {
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+}
+
+.pw-corners i {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(168, 85, 247, 0.9);
+}
+
+.pw-corners i:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.pw-corners i:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.pw-corners i:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-right: 0;
+  border-top: 0;
+}
+
+.pw-corners i:nth-child(4) {
+  bottom: 0;
+  right: 0;
+  border-left: 0;
+  border-top: 0;
+}
+
+/* 锁图标：细线条 SVG + 冷紫光晕，缓慢呼吸（克制、不跳动） */
+.pw-lock {
+  width: 34px;
+  height: 34px;
+  color: #b06cff;
+  animation: pwBreath 3.4s ease-in-out infinite;
+}
+
+@keyframes pwBreath {
   0%,
   100% {
-    transform: translateY(0) scale(1);
-    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.45));
+    opacity: 0.7;
+    filter: drop-shadow(0 0 7px rgba(168, 85, 247, 0.4));
   }
   50% {
-    transform: translateY(-3px) scale(1.06);
-    filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.9));
+    opacity: 1;
+    filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.95));
   }
 }
 
-/* 输入框所在的小面板：紫色边框 + 紫色光晕 */
+/* 输入区：输入框和按钮拼成一条“终端输入栏” */
 .pw-form {
   display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 20px 24px;
-  border: 1px solid rgba(168, 85, 247, 0.35);
-  border-radius: 14px;
-  background: radial-gradient(
-      circle at 50% 0%,
-      rgba(124, 58, 237, 0.14),
-      transparent 70%
-    ),
-    var(--bg-elevated);
-  box-shadow: 0 24px 70px -24px rgba(124, 58, 237, 0.6),
-    0 0 0 1px rgba(168, 85, 247, 0.08) inset;
+  align-items: stretch;
 }
 
 .pw-input {
-  padding: 11px 14px;
-  border: 1.5px solid rgba(168, 85, 247, 0.4);
-  border-radius: 8px;
-  background: rgba(124, 58, 237, 0.06);
-  color: var(--text);
-  font-size: 14px;
-  width: 220px;
+  width: 250px;
+  padding: 12px 14px;
+  border: 1px solid rgba(168, 85, 247, 0.36);
+  border-right: 0;
+  border-radius: 2px 0 0 2px;
+  background: rgba(8, 4, 13, 0.9);
+  color: #ece4f8;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease,
-    background-color 0.2s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .pw-input::placeholder {
-  color: rgba(168, 85, 247, 0.8);
-  letter-spacing: 1px;
+  color: rgba(168, 85, 247, 0.55);
+  letter-spacing: 0.16em;
 }
 
 .pw-input:focus {
-  border-color: #a855f7;
-  background: rgba(124, 58, 237, 0.12);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22),
-    0 0 24px rgba(168, 85, 247, 0.4);
+  border-color: rgba(168, 85, 247, 0.9);
+  background: rgba(14, 7, 22, 0.96);
+  box-shadow: inset 0 0 26px rgba(168, 85, 247, 0.18);
 }
 
 .pw-btn {
-  padding: 11px 20px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #7c3aed, #a855f7);
-  color: #fff;
-  font-size: 14px;
+  padding: 12px 20px;
+  border: 1px solid rgba(168, 85, 247, 0.55);
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.9),
+    rgba(76, 29, 149, 0.95)
+  );
+  color: #f5eeff;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
   cursor: pointer;
-  box-shadow: 0 8px 24px -8px rgba(124, 58, 237, 0.9);
-  transition: box-shadow 0.2s ease, filter 0.2s ease;
+  transition: filter 0.18s ease, box-shadow 0.18s ease;
 }
 
 .pw-btn:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 10px 30px -8px rgba(168, 85, 247, 1);
+  filter: brightness(1.18);
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.5);
 }
 
 .pw-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
 }
 
 .pw-error {
-  color: #f0426b;
-  font-size: 13px;
-  min-height: 18px;
-  margin: 14px 0 0;
-  text-shadow: 0 0 12px rgba(240, 66, 107, 0.5);
+  min-height: 16px;
+  margin: 0;
+  color: #ff5470;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 14px rgba(255, 84, 112, 0.6);
 }
 
 @media (max-width: 480px) {
   .pw-gate {
     padding-bottom: 8vh;
   }
+  .pw-panel {
+    padding: 28px 20px 20px;
+  }
   .pw-form {
     flex-direction: column;
     width: 100%;
-    max-width: 320px;
   }
-  .pw-input,
-  .pw-btn {
+  .pw-input {
     width: 100%;
+    border-right: 1px solid rgba(168, 85, 247, 0.36);
+    border-radius: 2px;
+    text-align: center;
+  }
+  .pw-btn {
+    border-radius: 2px;
+    border-top: 0;
   }
 }
 
-/* ---------- 友链点击跳转动画 ---------- */
+/* ---------- 友链点击跳转动画（极速 + 摩擦火花） ---------- */
 .link-zoom-ghost {
   position: fixed;
   z-index: 301;
   border-radius: 50%;
   overflow: hidden;
   pointer-events: none;
+}
+
+/* 摩擦火花 */
+.link-spark {
+  position: fixed;
+  z-index: 303;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
 }
 
 .link-zoom-ring {
@@ -1522,15 +1628,16 @@ html:not([data-theme="dark"]) .icon-sun {
   height: 22px;
   margin: -11px 0 0 -11px;
   border-radius: 50%;
-  border: 3px solid var(--accent);
+  border: 2px solid var(--accent);
   opacity: 0;
   transform: scale(0);
   z-index: 300;
   pointer-events: none;
-  transition: transform 2s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 1.8s ease;
+  transition: transform 0.55s cubic-bezier(0.15, 0.7, 0.25, 1),
+    opacity 0.5s ease;
 }
 
 .link-zoom-ring.on {
-  transform: scale(18);
-  opacity: 0.26;
+  transform: scale(22);
+  opacity: 0.3;
 }

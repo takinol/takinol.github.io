@@ -95,6 +95,31 @@ const markdownLoader = {
         logger.error(`渲染文章失败：${file} ${(error as Error).message}`);
         continue;
       }
+
+      // 去掉正文开头和标题重复的一级标题，否则页面上会出现两个一样的标题
+      // （与上传脚本的处理保持一致：重复就直接删掉，不重复但也是一级标题就降成二级）
+      const titleText = String((parsedData as any)?.title ?? '').trim();
+      if (rendered?.html && titleText) {
+        const m = /^\s*<h1([^>]*)>([\s\S]*?)<\/h1>\s*/i.exec(rendered.html);
+        if (m) {
+          const h1Text = m[2].replace(/<[^>]+>/g, '').trim();
+          if (h1Text === titleText) {
+            rendered.html = rendered.html.slice(m[0].length);
+            // 目录里也去掉这一条，避免出现点不动的死链
+            if (Array.isArray(rendered.metadata?.headings)) {
+              rendered.metadata.headings = rendered.metadata.headings.filter(
+                (h: any) => !(h.depth === 1 && String(h.text ?? '').trim() === titleText)
+              );
+            }
+          } else {
+            rendered.html = rendered.html.replace(
+              /^(\s*)<h1([^>]*)>([\s\S]*?)<\/h1>/i,
+              '$1<h2$2>$3</h2>'
+            );
+          }
+        }
+      }
+
       store.set({
         id,
         data: parsedData,

@@ -62,20 +62,44 @@ import { links } from '../data/links';
 </Base>
 
 <script>
-  // 友链点击炫酷跳转：头像飞到屏幕中央 → 边飞边加速旋转 → 到中心高速转 → 慢慢停下 → 跳转。
-  // 用 requestAnimationFrame 逐帧驱动，满 2.2 秒、旋转真正停住才跳转。
-  const DURATION = 2200; // 总时长
-  const T_ARRIVE = 0.42; // 0~42% 飞抵中心并放大，之后只旋转
+  // 友链点击跳转：头像极速飞向屏幕中央，一路擦出摩擦火花，撞到中心爆一圈火花后跳转。
+  // 用 requestAnimationFrame 逐帧驱动，满 DURATION 才跳转（不会提前）。
+  const DURATION = 720;
+  const SPARK_COLORS = ['#ffd166', '#ffb347', '#fff3b0', '#ff8c42', '#ffe9a8'];
+  const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -9 * t));
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-  // 旋转曲线：飞向中心时加速，到中心后减速，最后慢慢停住
-  const spinCurve = (t) => {
-    if (t < T_ARRIVE) {
-      const u = t / T_ARRIVE;
-      return 0.5 * u * u; // 加速段
-    }
-    const u = (t - T_ARRIVE) / (1 - T_ARRIVE);
-    return 0.5 + 0.5 * (1 - Math.pow(1 - u, 2)); // 减速段
-  };
+
+  // 在 (x, y) 位置冒一颗火花
+  function spark(x, y, spread) {
+    const s = document.createElement('span');
+    s.className = 'link-spark';
+    const size = 2 + Math.random() * 3.5;
+    const color = SPARK_COLORS[(Math.random() * SPARK_COLORS.length) | 0];
+    Object.assign(s.style, {
+      left: x + 'px',
+      top: y + 'px',
+      width: size + 'px',
+      height: size + 'px',
+      background: color,
+      boxShadow: '0 0 ' + (6 + size * 2) + 'px ' + color,
+    });
+    document.body.appendChild(s);
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 14 + Math.random() * spread;
+    const dx = Math.cos(ang) * dist;
+    const dy = Math.sin(ang) * dist;
+    const anim = s.animate(
+      [
+        { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+        {
+          transform: 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.15)',
+          opacity: 0,
+        },
+      ],
+      { duration: 200 + Math.random() * 260, easing: 'cubic-bezier(.12,.7,.2,1)' }
+    );
+    anim.onfinish = () => s.remove();
+  }
 
   const cards = document.querySelectorAll('.link-card');
   cards.forEach((card) => {
@@ -90,8 +114,10 @@ import { links } from '../data/links';
         return;
       }
       const rect = avatar.getBoundingClientRect();
+      const baseX = rect.left + rect.width / 2;
+      const baseY = rect.top + rect.height / 2;
 
-      // 幽灵头像：克隆一个，固定定位到原位置
+      // 幽灵头像
       const ghost = avatar.cloneNode(true);
       ghost.classList.add('link-zoom-ghost');
       const gImg = ghost.querySelector('img');
@@ -106,33 +132,48 @@ import { links } from '../data/links';
       });
       document.body.appendChild(ghost);
 
-      // 中央扩散的光环（CSS 过渡自己跑，淡淡的）
+      // 中心光环
       const ring = document.createElement('div');
       ring.className = 'link-zoom-ring';
       document.body.appendChild(ring);
       requestAnimationFrame(() => ring.classList.add('on'));
 
-      const cx = window.innerWidth / 2 - rect.left - rect.width / 2;
-      const cy = window.innerHeight / 2 - rect.top - rect.height / 2;
+      const cx = window.innerWidth / 2 - baseX;
+      const cy = window.innerHeight / 2 - baseY;
+      const centerX = baseX + cx;
+      const centerY = baseY + cy;
 
       let jumped = false;
       const go = () => {
         if (jumped) return;
         jumped = true;
-        // 跳转前把动画元素全部清掉，避免“返回”时缓存的页面残留覆盖层
         ghost.remove();
         ring.remove();
+        document.querySelectorAll('.link-spark').forEach((el) => el.remove());
         window.location.href = url;
       };
 
-      // 逐帧驱动：位移/缩放只在前 42% 完成，旋转全程（加速→减速停下），最后一帧才跳转
+      let burst = false;
       const start = performance.now();
       const frame = (now) => {
         const t = Math.min(1, (now - start) / DURATION);
-        const k = easeOutCubic(Math.min(1, t / T_ARRIVE));
-        const spin = 1080 * spinCurve(t);
+        const k = easeOutExpo(t);
+        const spin = 900 * easeOutCubic(t);
         ghost.style.transform =
-          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 1.7 * k}) rotate(${spin}deg)`;
+          `translate(${cx * k}px, ${cy * k}px) scale(${1 + 1.8 * k}) rotate(${spin}deg)`;
+
+        // 沿途擦出火花（越接近中心越少）
+        const px = baseX + cx * k;
+        const py = baseY + cy * k;
+        if (t < 0.9) spark(px, py, 60);
+        if (t < 0.35) spark(px, py, 36);
+
+        // 快撞到中心时爆一圈火花
+        if (!burst && t >= 0.85) {
+          burst = true;
+          for (let i = 0; i < 16; i++) spark(centerX, centerY, 100);
+        }
+
         if (t < 1) {
           requestAnimationFrame(frame);
         } else {
@@ -143,12 +184,11 @@ import { links } from '../data/links';
     });
   });
 
-  // 从目标网站“返回”时，若页面被浏览器缓存恢复（bfcache），
-  // 清掉可能残留的动画覆盖层，避免出现空白/被遮挡。
+  // 从目标网站“返回”时，若页面被浏览器缓存恢复（bfcache），清掉可能残留的动画元素
   window.addEventListener('pageshow', (e) => {
     if (e.persisted) {
       document
-        .querySelectorAll('.link-zoom-ghost, .link-zoom-ring')
+        .querySelectorAll('.link-zoom-ghost, .link-zoom-ring, .link-spark')
         .forEach((el) => el.remove());
     }
   });
