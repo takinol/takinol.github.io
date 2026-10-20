@@ -1,4 +1,4 @@
-# 依赖与构建产物（不需要提交到 GitHub）
+﻿# 依赖与构建产物（不需要提交到 GitHub）
 node_modules/
 dist/
 .astro/
@@ -8,6 +8,3 @@ dist/
 Thumbs.db
 *.log
 npm-debug.log*
-
-# 工作台压缩前的原图备份（只在本地，不上传）
-.原图备份/
