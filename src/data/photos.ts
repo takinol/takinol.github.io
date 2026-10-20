@@ -6,4 +6,5 @@
 export const photoNotes: Record<string, string> = {
   // 示例（可以删掉这三行）
   '猫咪': '我是第一只小猫',
+  'Yami': '平静的夜晚',
 };
