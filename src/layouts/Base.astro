@@ -275,7 +275,27 @@ const pageDescription = description ?? site.description;
           if (cached) fill(JSON.parse(cached));
         } catch (e) {}
 
-        // 本机标记了「不统计」就不上报（也不写访客 cookie）
+        const API_URL = 'https://events.vercount.one/api/v2/log';
+        const pageUrl = location.origin + location.pathname;
+
+        // 本机标记了「不统计」：用只读接口 GET 读取数字（实测不会增加计数），
+        // 这样站主自己也看得到访问量，只是不计入统计
+        if (!isLocal && noCount) {
+          fetch(API_URL + '?url=' + encodeURIComponent(pageUrl))
+            .then((r) => (r.ok ? r.json() : null))
+            .then((res) => {
+              const data = res?.data ?? res;
+              if (data && typeof data.site_pv === 'number') {
+                fill(data);
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify(data));
+                } catch (e) {}
+              }
+            })
+            .catch(() => {});
+        }
+
+        // 正常访客：上报一次（计数 +1），响应里带回最新数字
         if (!isLocal && !noCount) {
           const uvCookie = 'takinol_uv';
           const seen = document.cookie.split('; ').some((c) => c.startsWith(uvCookie + '='));

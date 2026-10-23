@@ -1658,10 +1658,7 @@ html:not([data-theme="dark"]) .icon-sun {
   margin: 1.1em 0;
 }
 
-/* 行内公式不要比正文大太多 */
-.prose .katex {
-  font-size: 1.03em;
-}
+/* 行内公式用 KaTeX 自带的比例（1.21em），这里不再覆盖字号，避免字形和行高错位 */
 
 /* ---------- 外链跳转确认浮窗 ---------- */
 .ext-modal {
