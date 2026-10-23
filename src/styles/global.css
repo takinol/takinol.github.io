@@ -1648,3 +1648,17 @@ html:not([data-theme="dark"]) .icon-sun {
   /* 加深：透明度从 0.3 提到 0.55，边框也加粗，颜色更实 */
   opacity: 0.55;
 }
+
+/* ---------- 数学公式（KaTeX）---------- */
+/* 块级公式（$$...$$）太宽时允许横向滚动，避免在手机上把整个页面撑破 */
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 2px;
+  margin: 1.1em 0;
+}
+
+/* 行内公式不要比正文大太多 */
+.prose .katex {
+  font-size: 1.03em;
+}

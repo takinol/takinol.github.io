@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+// KaTeX 公式样式（配合 astro.config 里的 remark-math + rehype-katex）
+import 'katex/dist/katex.min.css';
 import { site, nav } from '../data/site';
 interface Props {
   title?: string;
