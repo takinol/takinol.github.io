@@ -5,8 +5,10 @@ date: 2026-10-24
 
 >因为要做 $assignment$ 时需要借助 $transformer$ 的框架来做图生文，因此借助一些知乎和 $3Blue1Brown$ 以及一些小红书的帖子学习了该框架
 
-https://zhuanlan.zhihu.com/p/338817680
-https://www.bilibili.com/video/BV1TZ421j7Ke/?spm_id_from=333.1387.collection.video_card.click&vd_source=33e0b7298ac385ad7830e1e8c98d68cd
+参考资料：
+
+- [知乎 · Transformer 模型详解（图解）](https://zhuanlan.zhihu.com/p/338817680)
+- [B 站 · 3Blue1Brown 视频讲解](https://www.bilibili.com/video/BV1TZ421j7Ke/)
 
 在写这篇 transformer 之前，先简述一下这个玩意到底在解决什么。
 

@@ -115,6 +115,26 @@ const pageDescription = description ?? site.description;
       <span>已被访问 <b data-visit="site_pv">—</b> 次 · <b data-visit="site_uv">—</b> 位访客</span>
     </div>
 
+    <!-- 外链跳转确认浮窗：点站外链接时先弹这个，确认后再跳转 -->
+    <div class="ext-modal" id="ext-modal" hidden>
+      <div class="ext-modal-mask" data-ext-cancel></div>
+      <div
+        class="ext-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ext-modal-title"
+      >
+        <span class="ext-modal-tag">EXTERNAL LINK</span>
+        <h3 class="ext-modal-title" id="ext-modal-title">即将离开本站</h3>
+        <p class="ext-modal-url" id="ext-modal-url"></p>
+        <p class="ext-modal-hint">该链接指向外部网站，请注意个人信息与账号安全。</p>
+        <div class="ext-modal-actions">
+          <button class="ext-btn ext-btn-ghost" type="button" data-ext-cancel>取消</button>
+          <button class="ext-btn ext-btn-main" type="button" id="ext-modal-go">继续前往</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       // 主题切换（默认浅色；点一下变深色，再点回浅色）
       const toggle = document.getElementById('theme-toggle');
@@ -147,7 +167,8 @@ const pageDescription = description ?? site.description;
         if (
           el.classList.contains('brand') ||
           el.classList.contains('lightbox-btn') ||
-          el.classList.contains('pw-btn')
+          el.classList.contains('pw-btn') ||
+          el.classList.contains('ext-btn')
         )
           return;
         el.setAttribute('data-hov', '');
@@ -285,6 +306,84 @@ const pageDescription = description ?? site.description;
             });
         }
       }
+
+      // ---------- 外链跳转确认浮窗 ----------
+      // 点站外链接时不直接跳转，先弹一个「即将离开本站」的确认框
+      (() => {
+        const modal = document.getElementById('ext-modal');
+        if (!modal) return;
+        const urlEl = document.getElementById('ext-modal-url');
+        const goBtn = document.getElementById('ext-modal-go');
+        let pending = null; // { url, newTab }
+
+        const close = () => {
+          modal.hidden = true;
+          pending = null;
+        };
+
+        const open = (url, newTab) => {
+          pending = { url, newTab };
+          if (urlEl) urlEl.textContent = url;
+          modal.hidden = false;
+          // 让「继续前往」拿到焦点，回车即可确认
+          setTimeout(() => goBtn?.focus(), 30);
+        };
+
+        document.addEventListener(
+          'click',
+          (e) => {
+            // 组合键 / 中键 / 右键：交给浏览器默认行为
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+            const a = (e.target as Element)?.closest?.('a[href]') as HTMLAnchorElement | null;
+            if (!a) return;
+            // 这些不拦：站内链接页、友链卡片（有自己的动画）、显式标记的
+            if (
+              a.closest('.ext-modal') ||
+              a.classList.contains('link-card') ||
+              a.classList.contains('brand') ||
+              a.classList.contains('icon-btn') ||
+              a.hasAttribute('data-no-ext')
+            )
+              return;
+
+            const href = a.getAttribute('href') || '';
+            if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+
+            let u: URL;
+            try {
+              u = new URL(href, location.href);
+            } catch {
+              return;
+            }
+            if (u.host === location.host) return; // 站内链接正常跳
+
+            e.preventDefault();
+            open(u.href, a.target === '_blank');
+          },
+          true // 捕获阶段，赶在其它监听器之前
+        );
+
+        modal.querySelectorAll('[data-ext-cancel]').forEach((el) =>
+          el.addEventListener('click', close)
+        );
+        goBtn?.addEventListener('click', () => {
+          if (!pending) return;
+          const { url, newTab } = pending;
+          close();
+          if (newTab) window.open(url, '_blank', 'noopener');
+          else window.location.href = url;
+        });
+        document.addEventListener('keydown', (e) => {
+          if (modal.hidden) return;
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            goBtn?.click();
+          }
+        });
+      })();
     </script>
   </body>
 </html>
