@@ -328,6 +328,7 @@ export function initFightBand(): void {
     getupFade: number;
     lastDecision: number;
     emote: string | null;
+    kb: number;
     minX: number;
     maxX: number;
   }
@@ -349,6 +350,7 @@ export function initFightBand(): void {
   let fighters: Fighter[] = [];
   let sparks: Spark[] = [];
   let shake = 0;
+  let hitstop = 0; // 命中定格剩余时间（秒）
   let rafId = 0;
   let last = 0;
   let visible = false;
@@ -383,6 +385,7 @@ export function initFightBand(): void {
     getupFade: 0,
     lastDecision: 0,
     emote: null,
+    kb: 0,
     minX: 20,
     maxX: 9999,
   });
@@ -642,9 +645,36 @@ export function initFightBand(): void {
   };
 
   const update = (dt: number) => {
+    // 命中定格（hitstop）：人物瞬间冻结几帧，打击感来自这里
+    if (hitstop > 0) {
+      hitstop -= dt;
+      for (const s of sparks) {
+        s.life += dt;
+        s.x += s.vx * dt * 0.35;
+        s.y += s.vy * dt * 0.35;
+        s.vy += 260 * dt;
+      }
+      sparks = sparks.filter((s) => s.life < s.max);
+      shake *= 0.86;
+      return;
+    }
+
     for (const f of fighters) {
       f.bob += dt;
+
       f.flash = Math.max(0, f.flash - dt * 4.5);
+
+      if (f.kb !== 0) {
+
+        f.x += f.kb * dt;
+
+        f.kb *= Math.exp(-dt * 9);
+
+        if (Math.abs(f.kb) < 3) f.kb = 0;
+
+        f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
+
+      }
 
       /* --- 倒地 --- */
       if (f.state === 'down') {
@@ -717,13 +747,14 @@ export function initFightBand(): void {
             if (blocking) {
               // 格挡：蓝白火花、小退、不掉太多血、不进硬直
               spawn(at.x, at.y, '#9AD9FF', 'block', 6, 0.8);
-              opp.x += f.facing * 4;
-              f.x -= f.facing * 2;
+              opp.kb = f.facing * 90;
+              f.kb = -f.facing * 60;
+              hitstop = 0.03;
             } else {
               opp.flash = 1;
               // 真的被击退：位置移动 + 后仰
-              opp.x += f.facing * (f.state === 'kick' ? 11 : f.state === 'cross' ? 8 : 5);
-              opp.x = Math.max(24, Math.min(W - 24, opp.x));
+              opp.kb = f.facing * (f.state === 'kick' ? 320 : f.state === 'cross' ? 230 : 150);
+              hitstop = 0.055;
               spawn(at.x, at.y, opp.skin.trim, 'hit', f.state === 'kick' ? 10 : 7, f.state === 'kick' ? 1.3 : 1);
               if (opp.hp <= 0) {
                 spawn(at.x, at.y, '#FAC901', 'hit', 14, 1.6);
@@ -773,6 +804,8 @@ export function initFightBand(): void {
 
   /* ---------- 绘制 ---------- */
 
+  const OUTLINE = 'rgba(26,19,14,0.66)';
+
   const capsule = (a: Pt, b: Pt, ra: number, rb: number, fill: string) => {
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
     ctx.beginPath();
@@ -783,6 +816,12 @@ export function initFightBand(): void {
     ctx.fill();
   };
 
+  /** 带描边的锥形肢体：近端粗、远端细（Spine/DragonBones 里「部件 + 关节圆」的做法） */
+  const limb = (a: Pt, b: Pt, ra: number, rb: number, fill: string) => {
+    capsule(a, b, ra + 1.3, rb + 1.3, OUTLINE);
+    capsule(a, b, ra, rb, fill);
+  };
+
   const disc = (p: Pt, r: number, fill: string) => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, TAU);
@@ -790,124 +829,250 @@ export function initFightBand(): void {
     ctx.fill();
   };
 
-  const drawFighter = (f: Fighter) => {
-    const flashing = f.flash > 0.25;
-    const body = flashing ? '#FFFFFF' : f.skin.body;
-    const trim = flashing ? '#FFFFFF' : f.skin.trim;
-    const dark = flashing ? '#F0F0F0' : f.skin.dark;
-    const outline = 'rgba(20,16,12,0.55)';
+  /** 关节头：圆形覆盖，让弯折处不出现缺口 */
+  const jointCap = (p: Pt, r: number, fill: string) => {
+    disc(p, r + 1.25, OUTLINE);
+    disc(p, r, fill);
+  };
 
-    if (f.state === 'down' && f.ragdoll) {
-      const rd = f.ragdoll;
-      const g = (k: string) => ({ x: (rd[k] as Pt).x, y: (rd[k] as Pt).y });
-      drawRig(g, body, trim, dark, outline, 1);
-      return;
-    }
-
-    const { world, dy } = place(f);
-    const alpha = f.state === 'getup' ? f.getupFade : 1;
-
-    // 影子（腾空时缩小变淡）
-    const sh = Math.max(0.4, 1 - f.pose.lift / 40);
-    ctx.save();
-    ctx.globalAlpha = 0.13 * sh * alpha;
+  /** 躯干：宽肩窄腰的曲线轮廓，而不是方块 */
+  const torsoShape = (pelvis: Pt, chest: Pt, k: number, fill: string) => {
+    const dx = chest.x - pelvis.x;
+    const dy = chest.y - pelvis.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+    const wHip = 7.0 * k;
+    const wWaist = 5.7 * k;
+    const wChest = 8.4 * k;
+    const wShoulder = 9.2 * k;
+    const at = (t: number, w: number, side: number): Pt => ({
+      x: pelvis.x + ux * len * t + nx * w * side,
+      y: pelvis.y + uy * len * t + ny * w * side,
+    });
+    const pts = [
+      at(-0.05, wHip, -1),
+      at(0.3, wWaist, -1),
+      at(0.7, wChest, -1),
+      at(1.04, wShoulder, -1),
+      at(1.16, wShoulder * 0.72, -1),
+      at(1.16, wShoulder * 0.72, 1),
+      at(1.04, wShoulder, 1),
+      at(0.7, wChest, 1),
+      at(0.3, wWaist, 1),
+      at(-0.05, wHip, 1),
+    ];
     ctx.beginPath();
-    ctx.ellipse(f.x, groundY() + 1, 15 * sh * f.scale, 3.6 * sh, 0, 0, TAU);
-    ctx.fillStyle = '#000';
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+    ctx.fillStyle = fill;
     ctx.fill();
-    ctx.restore();
+  };
 
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    drawRig((k) => world[k], body, trim, dark, outline, alpha);
-    ctx.restore();
+  /** 头：椭圆头骨 + 头发块 + 表情（受伤时变成 ›‹ 眼） */
+  const headShape = (head: Pt, k: number, body: string, trim: string, expr: 'normal' | 'hurt' | 'down') => {
+    const rx = L.headR * k;
+    const ry = (L.headR + 0.8) * k;
+    ctx.beginPath();
+    ctx.ellipse(head.x, head.y, rx + 1.5, ry + 1.5, 0, 0, TAU);
+    ctx.fillStyle = OUTLINE;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(head.x, head.y, rx, ry, 0, 0, TAU);
+    ctx.fillStyle = body;
+    ctx.fill();
+    // 头发：覆盖上半部，带斜刘海缺口
+    ctx.beginPath();
+    ctx.ellipse(head.x, head.y - ry * 0.3, rx + 0.8, ry * 0.86, 0, Math.PI * 0.99, Math.PI * 2.01);
+    ctx.lineTo(head.x + rx * 0.62, head.y - ry * 0.06);
+    ctx.lineTo(head.x + rx * 0.1, head.y - ry * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = trim;
+    ctx.fill();
 
-    // 血条
-    if (f.state !== 'down') {
-      const w = 26;
-      const bx = f.x - w / 2;
-      const by = groundY() - 82;
-      ctx.fillStyle = 'rgba(0,0,0,0.14)';
-      ctx.fillRect(bx - 1, by - 1, w + 2, 4.5);
-      ctx.fillStyle = f.hp > 45 ? f.skin.body : '#DD0100';
-      ctx.fillRect(bx, by, (w * f.hp) / f.maxHp, 2.6);
+    const ex = head.x + rx * 0.16;
+    const ey = head.y + ry * 0.06;
+    const gap = rx * 0.36;
+    if (expr === 'normal') {
+      disc({ x: ex + gap, y: ey }, Math.max(1.3, rx * 0.19), '#1b1512');
+      disc({ x: ex - gap * 0.95, y: ey }, Math.max(1.3, rx * 0.19), '#1b1512');
+    } else {
+      ctx.strokeStyle = '#1b1512';
+      ctx.lineWidth = Math.max(1.2, rx * 0.16);
+      ctx.lineCap = 'round';
+      for (const s of [1, -1]) {
+        const cx = ex + gap * s;
+        ctx.beginPath();
+        ctx.moveTo(cx - rx * 0.16, ey - ry * 0.14);
+        ctx.lineTo(cx + rx * 0.16, ey);
+        ctx.lineTo(cx - rx * 0.16, ey + ry * 0.14);
+        ctx.stroke();
+      }
+    }
+    if (expr !== 'normal') {
+      ctx.save();
+      ctx.globalAlpha *= 0.5;
+      disc({ x: head.x + rx * 0.55, y: head.y + ry * 0.42 }, rx * 0.22, '#e8556d');
+      ctx.restore();
     }
   };
 
-  const drawRig = (
+  /** 拳头：球 + 拇指小凸起 */
+  const fist = (p: Pt, k: number, fill: string) => {
+    jointCap(p, 3.3 * k, fill);
+    disc({ x: p.x - 1.4 * k, y: p.y + 1.7 * k }, 1.5 * k, fill);
+  };
+
+  /** 鞋：沿小腿方向伸出的楔形 */
+  const shoe = (foot: Pt, knee: Pt, k: number, fill: string) => {
+    const ang = Math.atan2(foot.y - knee.y, foot.x - knee.x) + Math.PI / 2;
+    const tx = Math.cos(ang);
+    const ty = Math.sin(ang);
+    const L1 = 5.6 * k;
+    const L2 = 2.8 * k;
+    const pts: Pt[] = [
+      { x: foot.x - tx * L2 * 0.4, y: foot.y - ty * L2 * 0.4 },
+      { x: foot.x + tx * L1, y: foot.y + ty * L1 },
+      { x: foot.x + tx * L1 * 0.9, y: foot.y + ty * L1 * 0.9 + 2.4 * k },
+      { x: foot.x - tx * L2 * 0.2, y: foot.y + 2.6 * k },
+    ];
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 1.9;
+    ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+
+  /** 整具身体：按深度顺序分层绘制（远肢 → 躯干 → 头 → 近肢） */
+  const drawFigure = (
     get: (k: string) => Pt,
+    k: number,
     body: string,
     trim: string,
     dark: string,
-    outline: string,
-    alpha: number
+    expr: 'normal' | 'hurt' | 'down'
   ) => {
-    const J = (k: string) => get(k);
-    const pelvis = J('pelvis');
-    const chest = J('chest');
-    const head = J('head');
+    const pelvis = get('pelvis');
+    const chest = get('chest');
+    const head = get('head');
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 后侧腿脚（暗一点，形成前后层次）
+    // 远侧（暗色，形成前后层次）
     ctx.save();
-    ctx.globalAlpha *= 0.72;
-    capsule(J('hipB'), J('kneeB'), 4.4, 3.6, dark);
-    capsule(J('kneeB'), J('footB'), 3.4, 2.8, dark);
-    capsule(J('shoulderB'), J('elbowB'), 3.8, 3.2, dark);
-    capsule(J('elbowB'), J('handB'), 3.2, 2.8, dark);
-    disc(J('handB'), 3.1, dark);
+    ctx.globalAlpha *= 0.78;
+    limb(get('hipB'), get('kneeB'), 5.2 * k, 4.2 * k, dark);
+    jointCap(get('kneeB'), 4.2 * k, dark);
+    limb(get('kneeB'), get('footB'), 4.0 * k, 3.2 * k, dark);
+    shoe(get('footB'), get('kneeB'), k, dark);
+    limb(get('shoulderB'), get('elbowB'), 4.3 * k, 3.5 * k, dark);
+    jointCap(get('elbowB'), 3.5 * k, dark);
+    limb(get('elbowB'), get('handB'), 3.4 * k, 3.0 * k, dark);
+    fist(get('handB'), k, dark);
     ctx.restore();
 
-    // 前侧腿
-    capsule(J('hipF'), J('kneeF'), 5, 4, body);
-    capsule(J('kneeF'), J('footF'), 3.9, 3.1, body);
-    // 脚掌
-    const foot = J('footF');
-    const knee = J('kneeF');
-    const fa = Math.atan2(foot.y - knee.y, foot.x - knee.x);
-    capsule(foot, { x: foot.x + Math.cos(fa + Math.PI / 2) * 4.5, y: foot.y + Math.sin(fa + Math.PI / 2) * 1.2 }, 2.6, 2, body);
+    // 躯干 + 腰带
+    torsoShape(pelvis, chest, k, body);
+    const dx = chest.x - pelvis.x;
+    const dy = chest.y - pelvis.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    const nx = -dy / dl;
+    const ny = dx / dl;
+    const bw = 6.4 * k;
+    const bcx = pelvis.x + dx * 0.26;
+    const bcy = pelvis.y + dy * 0.26;
+    capsule({ x: bcx + nx * bw, y: bcy + ny * bw }, { x: bcx - nx * bw, y: bcy - ny * bw }, 2.0 * k, 2.0 * k, trim);
 
-    // 躯干（锥形：胸宽腰窄）
-    capsule(pelvis, chest, 5.6, 7.2, body);
-    // 腰带（撞色）
-    const pxv = chest.x - pelvis.x;
-    const pyv = chest.y - pelvis.y;
-    const pl = Math.hypot(pxv, pyv) || 1;
-    const nx = -pyv / pl;
-    const ny = pxv / pl;
-    const bw = 6.2;
-    capsule(
-      { x: pelvis.x + pxv * 0.22 + nx * bw, y: pelvis.y + pyv * 0.22 + ny * bw },
-      { x: pelvis.x + pxv * 0.22 - nx * bw, y: pelvis.y + pyv * 0.22 - ny * bw },
-      2.1,
-      2.1,
-      trim
-    );
+    // 脖子
+    const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.14, y: chest.y + (chest.y - pelvis.y) * 0.14 };
+    limb(neckA, { x: head.x, y: head.y + L.headR * k * 0.65 }, 3.4 * k, 3.2 * k, dark);
 
-    // 头 + 头发 + 眼睛
-    const headR = L.headR;
-    disc(head, headR + 1.5, outline);
-    disc(head, headR, body);
-    // 头顶发块（撞色，制造辨识度）
+    // 头
+    headShape(head, k, body, trim, expr);
+
+    // 近侧腿
+    limb(get('hipF'), get('kneeF'), 5.8 * k, 4.6 * k, body);
+    jointCap(get('kneeF'), 4.6 * k, body);
+    limb(get('kneeF'), get('footF'), 4.4 * k, 3.4 * k, body);
+    shoe(get('footF'), get('kneeF'), k, body);
+
+    // 近侧手臂 + 拳头
+    limb(get('shoulderF'), get('elbowF'), 4.8 * k, 3.9 * k, body);
+    jointCap(get('elbowF'), 3.9 * k, body);
+    limb(get('elbowF'), get('handF'), 3.8 * k, 3.2 * k, body);
+    fist(get('handF'), k, body);
+  };
+
+  const drawFighter = (f: Fighter) => {
+    const flashing = f.flash > 0.25;
+    const body = flashing ? '#FFFFFF' : f.skin.body;
+    const trim = flashing ? '#F4F4F4' : f.skin.trim;
+    const dark = flashing ? '#E8E8E8' : f.skin.dark;
+    const expr: 'normal' | 'hurt' | 'down' =
+      f.state === 'down' ? 'down' : f.state === 'hurtLight' || f.state === 'hurtHeavy' || flashing ? 'hurt' : 'normal';
+
+    const sh = Math.max(0.4, 1 - f.pose.lift / 40);
+    ctx.save();
+    ctx.globalAlpha = 0.14 * sh;
     ctx.beginPath();
-    ctx.arc(head.x, head.y, headR + 0.4, Math.PI * 1.08, Math.PI * 1.92);
-    ctx.lineTo(head.x, head.y - headR * 0.35);
-    ctx.closePath();
-    ctx.fillStyle = trim;
+    ctx.ellipse(f.x, groundY() + 1, 15 * sh * f.scale, 3.4 * sh, 0, 0, TAU);
+    ctx.fillStyle = '#000';
     ctx.fill();
-    // 眼睛（朝面向方向）
-    const ex = head.x + (chest.x - pelvis.x) * 0.09;
-    disc({ x: ex + 2.6, y: head.y + 0.4 }, 1.7, '#171310');
-    disc({ x: ex - 2.6, y: head.y + 0.4 }, 1.7, '#171310');
+    ctx.restore();
 
-    // 前侧手臂 + 拳头
-    capsule(J('shoulderF'), J('elbowF'), 4.2, 3.6, body);
-    capsule(J('elbowF'), J('handF'), 3.5, 3, body);
-    const hand = J('handF');
-    disc(hand, 3.5, outline);
-    disc(hand, 3.1, body);
+    // 受击挤压：横向张开、纵向压扁
+    const sq = Math.min(1, f.flash);
+    ctx.save();
+    if (sq > 0.02) {
+      const baseY = groundY();
+      ctx.translate(f.x, baseY);
+      ctx.scale(1 + sq * 0.12, 1 - sq * 0.14);
+      ctx.translate(-f.x, -baseY);
+    }
+
+    const alpha = f.state === 'getup' ? Math.max(0.02, f.getupFade) : 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if (f.state === 'down' && f.ragdoll) {
+      const rd = f.ragdoll;
+      drawFigure(
+        (key) => ({ x: (rd[key] as Pt).x, y: (rd[key] as Pt).y }),
+        f.scale,
+        body,
+        trim,
+        dark,
+        'down'
+      );
+    } else {
+      const { world } = place(f);
+      drawFigure((key) => world[key as keyof Joints], f.scale, body, trim, dark, expr);
+    }
+    ctx.restore();
+    ctx.restore();
+
+    if (f.state !== 'down') {
+      const w = 26;
+      const bx = f.x - w / 2;
+      const by = groundY() - 84;
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      ctx.fillRect(bx - 1, by - 1, w + 2, 4.6);
+      ctx.fillStyle = f.hp > 45 ? f.skin.body : '#DD0100';
+      ctx.fillRect(bx, by, (w * f.hp) / f.maxHp, 2.8);
+    }
   };
 
   const render = () => {
