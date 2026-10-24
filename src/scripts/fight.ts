@@ -1215,6 +1215,12 @@ export function initFightBand(opts: FightOptions = {}): void {
           setState(f, 'idle');
           f.cool = Math.max(f.cool, rand(0.25, 0.8));
         }
+      }
+
+      /* --- 待机时做决策（自主模式下自动出手，演示模式下关闭） --- */
+      if (!opts.demo && f.state === 'idle') {
+        f.cool -= dt;
+        f.lastDecision += dt;
         if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > 0.1) {
           f.lastDecision = 0;
           applyDecision(f, opp, decide(f, opp));
