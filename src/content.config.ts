@@ -33,7 +33,8 @@ function parseFrontmatter(source: string): {
     if (!trimmed || trimmed.startsWith('#')) continue;
     const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(trimmed);
     if (kv) {
-      currentKey = kv[1];
+      // tag / tags 都认（Obsidian 笔记里常写成单数 tag）
+      currentKey = kv[1] === 'tag' ? 'tags' : kv[1];
       const value = kv[2].trim();
       if (value === '') {
         data[currentKey] = [];
@@ -50,6 +51,7 @@ function parseFrontmatter(source: string): {
         data[currentKey] = parseScalar(value);
       }
     } else if (currentKey && trimmed.startsWith('- ')) {
+      // 若前面写的是单数 tag，这里已经归一到 tags 了
       const list = (data[currentKey] ??= []) as unknown[];
       list.push(parseScalar(trimmed.slice(2)));
     }
