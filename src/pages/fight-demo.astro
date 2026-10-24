@@ -115,6 +115,20 @@ import Base from '../layouts/Base.astro';
     initFightBand({ canvasId: 'demo-canvas', demo: true });
 
     const api = () => (window as any).takinolFight?.demo;
+
+    // URL 参数：?move=hook&frac=0.55 —— 直接定格到某招某帧，方便逐帧检查 / 截图
+    const qs = new URLSearchParams(location.search);
+    const mv = qs.get('move');
+    const frac = Number(qs.get('frac'));
+    if (mv) {
+      const d0 = api();
+      const item = d0?.list.find((x) => x.key === mv);
+      if (d0 && item) {
+        d0.go(item.i);
+        if (qs.has('frac') && !Number.isNaN(frac)) d0.seek(frac);
+      }
+    }
+
     const listEl = document.getElementById('demo-list');
     const pauseBtn = document.getElementById('demo-pause') as HTMLButtonElement | null;
     const slowBtn = document.getElementById('demo-slow') as HTMLButtonElement | null;
