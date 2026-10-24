@@ -1,0 +1,175 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="招式演示" description="小人打架的全部招式逐个演示">
+  <div class="container demo-page">
+    <header class="page-head">
+      <h1>招式演示</h1>
+      <p>逐个播放并标注名称，方便一招一招检查。</p>
+    </header>
+
+    <section class="demo-stage">
+      <canvas id="demo-canvas"></canvas>
+    </section>
+
+    <div class="demo-controls">
+      <button id="demo-prev" type="button">← 上一个</button>
+      <button id="demo-next" type="button">下一个 →</button>
+      <button id="demo-pause" type="button">⏸ 暂停</button>
+      <button id="demo-slow" type="button">🐢 慢放</button>
+      <span class="demo-keys">快捷键：← → 切换 · 空格 暂停 · S 慢放</span>
+    </div>
+
+    <ol class="demo-list" id="demo-list"></ol>
+  </div>
+
+  <style is:global>
+    .demo-page {
+      padding-bottom: 60px;
+    }
+    .demo-stage {
+      margin: 24px 0 16px;
+      height: 240px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(180deg, transparent 0%, var(--bg-elevated) 84%);
+      overflow: hidden;
+    }
+    .demo-stage canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .demo-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .demo-controls button {
+      padding: 6px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .demo-controls button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .demo-controls button.on {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .demo-keys {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-faint);
+      margin-left: 4px;
+    }
+    .demo-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 6px;
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .demo-list li button {
+      width: 100%;
+      text-align: left;
+      padding: 7px 11px;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .demo-list li button:hover {
+      color: var(--text);
+      border-color: var(--text-faint);
+    }
+    .demo-list li button.cur {
+      color: var(--bg);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    @media (max-width: 640px) {
+      .demo-stage {
+        height: 200px;
+      }
+    }
+  </style>
+
+  <script>
+    import { initFightBand } from '../scripts/fight';
+
+    initFightBand({ canvasId: 'demo-canvas', demo: true });
+
+    const api = () => (window as any).takinolFight?.demo;
+    const listEl = document.getElementById('demo-list');
+    const pauseBtn = document.getElementById('demo-pause') as HTMLButtonElement | null;
+    const slowBtn = document.getElementById('demo-slow') as HTMLButtonElement | null;
+
+    const items: { i: number; key: string; name: string }[] = api()?.list ?? [];
+
+    // 生成招式目录（点一下直接跳到那一招）
+    if (listEl) {
+      for (const it of items) {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = it.name;
+        btn.dataset.idx = String(it.i);
+        btn.addEventListener('click', () => api()?.go(it.i));
+        li.appendChild(btn);
+        listEl.appendChild(li);
+      }
+    }
+
+    // 高亮当前项 + 同步按钮状态
+    const sync = () => {
+      const d = api();
+      if (!d) return;
+      const cur = d.idx;
+      listEl?.querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('cur', Number((b as HTMLElement).dataset.idx) === cur);
+      });
+      if (pauseBtn) {
+        pauseBtn.textContent = d.paused ? '▶ 继续' : '⏸ 暂停';
+        pauseBtn.classList.toggle('on', !!d.paused);
+      }
+      if (slowBtn) {
+        slowBtn.textContent = d.slowOn ? '🐇 恢复速度' : '🐢 慢放';
+        slowBtn.classList.toggle('on', !!d.slowOn);
+      }
+    };
+    setInterval(sync, 120);
+    sync();
+
+    document.getElementById('demo-prev')?.addEventListener('click', () => {
+      const d = api();
+      if (d) d.go(d.idx - 1);
+    });
+    document.getElementById('demo-next')?.addEventListener('click', () => {
+      const d = api();
+      if (d) d.go(d.idx + 1);
+    });
+    pauseBtn?.addEventListener('click', () => {
+      api()?.pause();
+      sync();
+    });
+    slowBtn?.addEventListener('click', () => {
+      api()?.slow();
+      sync();
+    });
+  </script>
+</Base>

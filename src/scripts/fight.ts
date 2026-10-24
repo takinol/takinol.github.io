@@ -424,8 +424,15 @@ interface Root {
   top: number; // 头顶相对骨盆的高度（造型相关）
 }
 
-export function initFightBand(): void {
-  const canvas = document.getElementById('fight-canvas') as HTMLCanvasElement | null;
+export interface FightOptions {
+  /** 画布元素 id，默认 fight-canvas */
+  canvasId?: string;
+  /** 演示模式：按顺序逐个播放招式并标注 */
+  demo?: boolean;
+}
+
+export function initFightBand(opts: FightOptions = {}): void {
+  const canvas = document.getElementById(opts.canvasId ?? 'fight-canvas') as HTMLCanvasElement | null;
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -852,6 +859,92 @@ export function initFightBand(): void {
       f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
     }
   };
+  /* ---------- 演示模式：逐个播放每个招式并标注 ---------- */
+
+  interface DemoEntry {
+    key: string;
+    name: string;
+    kind: 'attack' | 'react' | 'jump' | 'ko';
+  }
+
+  const DEMO_LIST: DemoEntry[] = [
+    { key: 'jab', name: '① 刺拳 Jab（前手直拳）', kind: 'attack' },
+    { key: 'cross', name: '② 后手直拳 Cross（转体冲拳）', kind: 'attack' },
+    { key: 'hook', name: '③ 摆拳 Hook（横拳走弧线）', kind: 'attack' },
+    { key: 'uppercut', name: '④ 上勾拳 Uppercut（冲天拳）', kind: 'attack' },
+    { key: 'elbow', name: '⑤ 肘击 Elbow（肘尖近身）', kind: 'attack' },
+    { key: 'snapKick', name: '⑥ 弹腿 Snap Kick（提膝弹出）', kind: 'attack' },
+    { key: 'pushKick', name: '⑦ 正蹬 Push Kick（整腿前推）', kind: 'attack' },
+    { key: 'sideKick', name: '⑧ 侧踹 Side Kick（后仰平蹬）', kind: 'attack' },
+    { key: 'roundKick', name: '⑨ 鞭腿 Round Kick（横扫到头部）', kind: 'attack' },
+    { key: 'axeKick', name: '⑩ 下劈腿 Axe Kick（抬过头再下砸）', kind: 'attack' },
+    { key: 'spinKick', name: '⑪ 后旋踢 Spinning Kick（转体一圈）', kind: 'attack' },
+    { key: 'flyKick', name: '⑫ 腾空飞踢 Flying Kick（跳起前冲）', kind: 'attack' },
+    { key: 'scissorKick', name: '⑬ 双飞脚 Scissor Kick（两段连击）', kind: 'attack' },
+    { key: 'hurtLight', name: '⑭ 受击·轻（头猛后仰）', kind: 'react' },
+    { key: 'hurtHeavy', name: '⑮ 受击·重（弓身缩起）', kind: 'react' },
+    { key: 'hurtUp', name: '⑯ 受击·下巴（仰头踉跄）', kind: 'react' },
+    { key: 'block', name: '⑰ 格挡 Block（双臂收紧）', kind: 'react' },
+    { key: 'jump', name: '⑱ 跳跃 Jump（起跳闪避）', kind: 'jump' },
+    { key: 'ko', name: '⑲ 倒地 → 起身 KO & Get Up', kind: 'ko' },
+  ];
+
+  let demoIdx = 0;
+  let demoTimer = 0;
+  let demoPaused = false;
+  let demoSlow = false;
+
+  const demoDur = (e: DemoEntry) => {
+    if (e.kind === 'attack') return (CLIPS[e.key]?.dur ?? 0.6) + 0.65;
+    if (e.kind === 'react') return (CLIPS[e.key]?.dur ?? 0.4) + 0.55;
+    if (e.kind === 'ko') return 3.0;
+    return 1.3;
+  };
+
+  const startDemoEntry = (i: number) => {
+    if (!opts.demo) return;
+    const n = DEMO_LIST.length;
+    demoIdx = ((i % n) + n) % n;
+    demoTimer = 0;
+    const e = DEMO_LIST[demoIdx];
+    const a = fighters[0];
+    const d = fighters[1];
+    if (!a || !d) return;
+
+    // 每次演示都回到同样的站位与姿势，方便逐个对比
+    const cx = W / 2;
+    a.x = cx - 30;
+    a.facing = 1;
+    a.kb = 0;
+    a.hp = a.maxHp;
+    a.ragdoll = null;
+    a.pose = { ...GUARD };
+    a.state = 'idle';
+    a.clipT = 0;
+    a.clipDur = CLIPS.idle.dur;
+
+    d.x = cx + 30;
+    d.facing = -1;
+    d.kb = 0;
+    d.hp = d.maxHp;
+    d.ragdoll = null;
+    d.pose = { ...GUARD };
+    d.state = 'idle';
+    d.clipT = 0;
+    d.clipDur = CLIPS.idle.dur;
+
+    if (e.kind === 'attack') {
+      setState(a, e.key as State);
+    } else if (e.kind === 'react') {
+      setState(d, e.key as State);
+    } else if (e.kind === 'jump') {
+      setState(a, 'jump');
+    } else if (e.kind === 'ko') {
+      d.hp = 0;
+      startRagdoll(d);
+    }
+  };
+
   const update = (dt: number) => {
     // 命中定格（hitstop）：人物瞬间冻结几帧，打击感来自这里
     if (hitstop > 0) {
@@ -865,6 +958,14 @@ export function initFightBand(): void {
       sparks = sparks.filter((s) => s.life < s.max);
       shake *= 0.86;
       return;
+    }
+
+    // 演示模式：自动切到下一个招式，并保持防守方不死
+    if (opts.demo) {
+      demoTimer += dt * (demoSlow ? 0.35 : 1);
+      const dd = fighters[1];
+      if (dd && dd.state !== 'down' && dd.state !== 'getup') dd.hp = dd.maxHp;
+      if (!demoPaused && demoTimer > demoDur(DEMO_LIST[demoIdx])) startDemoEntry(demoIdx + 1);
     }
 
     for (const f of fighters) {
@@ -997,8 +1098,8 @@ export function initFightBand(): void {
         f.cool = Math.max(f.cool, rand(0.25, 0.8));
       }
 
-      /* --- 待机时做决策 --- */
-      if (f.state === 'idle') {
+      /* --- 待机时做决策（演示模式下不自动出手） --- */
+      if (!opts.demo && f.state === 'idle') {
         f.cool -= dt;
         f.lastDecision += dt;
         if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > 0.1) {
@@ -1329,6 +1430,21 @@ export function initFightBand(): void {
       ctx.fillRect(s.x - sz / 2, s.y - sz / 2, sz, sz);
     }
     ctx.globalAlpha = 1;
+
+    // 演示模式：顶部显示当前招式名与序号
+    if (opts.demo) {
+      const e = DEMO_LIST[demoIdx];
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = 'bold 15px system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif';
+      ctx.fillStyle = 'rgba(20,16,12,0.78)';
+      ctx.fillText(`${demoIdx + 1} / ${DEMO_LIST.length}   ${e.name}`, W / 2, 24);
+      ctx.font = '11px ui-monospace, "Cascadia Mono", monospace';
+      ctx.fillStyle = 'rgba(20,16,12,0.42)';
+      ctx.fillText('← → 逐个查看 · 空格 暂停 · S 慢放', W / 2, 41);
+      ctx.restore();
+    }
   };
 
   /* ---------- 生命周期 ---------- */
@@ -1340,7 +1456,7 @@ export function initFightBand(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    const want = W < 620 ? 2 : 4;
+    const want = opts.demo ? 2 : W < 620 ? 2 : 4;
     if (fighters.length !== want) makeFighters(want);
     layout();
     render();
@@ -1358,6 +1474,7 @@ export function initFightBand(): void {
   };
 
   resize();
+  if (opts.demo) startDemoEntry(0);
   window.addEventListener('resize', () => {
     window.clearTimeout((window as any).__fightResize);
     (window as any).__fightResize = window.setTimeout(resize, 140);
@@ -1375,6 +1492,23 @@ export function initFightBand(): void {
   if (!reduceMotion) rafId = requestAnimationFrame(loop);
   window.addEventListener('pagehide', () => cancelAnimationFrame(rafId));
 
+  // 演示模式的键盘控制
+  if (opts.demo) {
+    window.addEventListener('keydown', (ev) => {
+      if (ev.key === 'ArrowRight') {
+        startDemoEntry(demoIdx + 1);
+        ev.preventDefault();
+      } else if (ev.key === 'ArrowLeft') {
+        startDemoEntry(demoIdx - 1);
+        ev.preventDefault();
+      } else if (ev.key === ' ') {
+        demoPaused = !demoPaused;
+        ev.preventDefault();
+      } else if (ev.key === 's' || ev.key === 'S') {
+        demoSlow = !demoSlow;
+      }
+    });
+  }
   // 对外接口（将来接 AI API 用）
   (window as any).takinolFight = {
     setController,
@@ -1389,5 +1523,27 @@ export function initFightBand(): void {
       })),
     /** 结束外部控制，回到本地 AI */
     reset: () => setController(null),
+    /** 演示模式控制 */
+    demo: {
+      list: DEMO_LIST.map((e, i) => ({ i, key: e.key, name: e.name })),
+      go: (i: number) => startDemoEntry(i),
+      pause: (v?: boolean) => {
+        demoPaused = v ?? !demoPaused;
+        return demoPaused;
+      },
+      slow: (v?: boolean) => {
+        demoSlow = v ?? !demoSlow;
+        return demoSlow;
+      },
+      get idx() {
+        return demoIdx;
+      },
+      get paused() {
+        return demoPaused;
+      },
+      get slowOn() {
+        return demoSlow;
+      },
+    },
   };
 }
