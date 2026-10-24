@@ -13,7 +13,8 @@
  *      默认用本地启发式 AI；只有页面真的被人看到时才跑（IntersectionObserver + 标签页可见性）
  */
 
-import { FsmProcess, FsmStateConfig, STATE_ANY, STATE_INITIAL } from '@statewalker/fsm';
+import { FsmProcess, STATE_ANY, STATE_INITIAL } from '@statewalker/fsm';
+import type { FsmStateConfig } from '@statewalker/fsm';
 
 /* ============================================================
  * 1. 骨架定义
