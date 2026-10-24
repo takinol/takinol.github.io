@@ -228,10 +228,22 @@ const ROUND_HIT = P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0
 const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, armLF: 0.9, legUB: 0.12, legLB: 0, legUF: 2.45, legLF: -0.15 });
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0, legUF: 0.95, legLF: 0.05 });
 
-/** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: 1.0, legLB: -1.6, legUBD: 0.15, legUF: -0.12, legLF: 0, legUFD: 0, yaw: 0 });
-const SPIN_MID = P({ lean: 0.1, head: -1.6, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: 1.0, legLB: -1.5, legUBD: 0.15, legUF: 0.1, legLF: 0, legUFD: 0, yaw: 3.14 });
-const SPIN_KICK = P({ lean: -0.12, head: 0.18, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0, legUBD: -0.25, legUF: 0.12, legLF: 0, legUFD: 0, yaw: 3.14 });
+/**
+ * 后旋踢：绕支撑脚转体一圈。
+ * 物理链条 —— 蓄力提膝 → 身体转起来（腿收着，转动惯量小才转得快）
+ * → 转到半圈时腿甩成水平并绷直（角动量甩到脚上）
+ * → 身体继续转，把这条绷直的腿「扫」过对手 → 收势落地。
+ * 关键：腿扫出去之后自身角度不再变化，是身体继续转带着它走。
+ */
+const SPIN_TUCK = P({ lean: 0.18, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: 1.0, legLB: -1.6, legUBD: 0.15, legUF: -0.12, legLF: 0, legUFD: 0, yaw: 0 });
+/** 转体 1/4：身体刚开始转，腿仍收在身前（团身 = 转得快） */
+const SPIN_TURN_A = P({ lean: 0.1, head: -1.55, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: 0.88, legLB: -1.65, legUBD: 0.2, legUF: -0.05, legLF: 0, legUFD: 0, yaw: 1.75 });
+/** 转体 3/4：身体转到背面，腿开始打开、膝盖还没伸直 */
+const SPIN_TURN_B = P({ lean: -0.02, head: -1.45, armUB: 0.1, armLB: 1.2, armUF: 0.5, armLF: 1.15, legUB: -0.8, legLB: -0.72, legUBD: -0.1, legUF: 0.04, legLF: 0, legUFD: 0, yaw: 2.62 });
+/** 命中：身体正好转满半圈，腿已被甩成水平并绷直，脚扫到对手 */
+const SPIN_KICK = P({ lean: -0.22, head: 0.18, armUB: -0.5, armLB: 0.8, armUF: 0.6, armLF: 0.9, legUB: -1.62, legLB: -0.05, legUBD: -0.25, legUF: 0.12, legLF: 0, legUFD: 0, yaw: 3.14 });
+/** 扫过：身体继续转，腿保持绷直被带着扫过去（follow through） */
+const SPIN_THROUGH = P({ lean: -0.32, head: 0.55, armUB: -0.78, armLB: 0.7, armUF: 0.35, armLF: 0.8, legUB: -1.62, legLB: -0.05, legUBD: -0.25, legUF: 0.16, legLF: 0, legUFD: 0, yaw: 4.35 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0, legUBD: 0, legUF: 0.32, legLF: 0, yaw: 6.28 });
 
 /** 腾空飞踢：跳起来前冲踢 */
@@ -284,7 +296,8 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.12, pose: SPIN_TUCK }, { t: 0.44, pose: SPIN_MID }, { t: 0.55, pose: SPIN_KICK }, { t: 0.76, pose: SPIN_KICK }, { t: 0.94, pose: SPIN_END }, { t: 1, pose: SPIN_END }] },
+  // 转体全程连续加速：0 → 半圈命中 → 继续扫过 → 转正落地
+  spinKick: { dur: 1.1, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.26, pose: SPIN_TURN_A }, { t: 0.4, pose: SPIN_TURN_B }, { t: 0.5, pose: SPIN_KICK }, { t: 0.62, pose: SPIN_THROUGH }, { t: 0.86, pose: SPIN_END }, { t: 1, pose: SPIN_END }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -333,7 +346,8 @@ const ATTACKS: Record<string, Atk> = {
   sideKick: { part: 'footF', hits: [{ at: 0.54, dmg: [18, 27], reach: 1.35, knock: 430 }], hitstop: 0.08, react: 'heavy' },
   roundKick: { part: 'footF', hits: [{ at: 0.54, dmg: [16, 24], reach: 1.3, knock: 300 }], hitstop: 0.075, react: 'heavy' },
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
-  spinKick: { part: 'footB', hits: [{ at: 0.55, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.16, react: 'heavy', far: true },
+  // 命中时刻对齐「身体转满半圈、腿扫到位」那一帧；转身的同时向前突进才够得着
+  spinKick: { part: 'footB', hits: [{ at: 0.5, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.16, react: 'heavy', far: true, forward: 110 },
   flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
   scissorKick: {
     part: 'footF',
@@ -541,6 +555,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     aggression: number;
     guardChance: number;
     preferDist: number;
+    /** 承诺窗口：意图锁定剩余时间（防止每 0.1s 反悔抽搐） */
+    intentLock: number;
+    /** 反击窗口：格挡成功后短暂提升反击招权重 */
+    counterWindow: number;
+    /** 连招窗口：命中后短暂提升快速招权重 */
+    comboTimer: number;
     downTimer: number;
     ragdoll: Record<string, Pt & { px: number; py: number }> | null;
     links: { a: string; b: string; len: number }[];
@@ -578,6 +598,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   let H = 0;
   let fighters: Fighter[] = [];
   let sparks: Spark[] = [];
+  let popups: { x: number; y: number; text: string; life: number; max: number; color: string }[] = [];
   let shake = 0;
   let hitstop = 0; // 命中定格剩余时间（秒）
   let rafId = 0;
@@ -609,6 +630,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     aggression: rand(0.45, 0.95),
     guardChance: rand(0.35, 0.75),
     preferDist: rand(29, 34),
+    intentLock: 0,
+    counterWindow: 0,
+    comboTimer: 0,
     downTimer: 0,
     ragdoll: null,
     links: [],
@@ -697,12 +721,19 @@ export function initFightBand(opts: FightOptions = {}): void {
     const yaw = f.pose.yaw || 0;
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
+    // 转身的轴是「支撑脚」：先把骨骼绕竖轴转，再整体平移把那只脚挪回原处。
+    // 否则是绕骨盆自转，两只脚会在地上画大弧线滑行，看着像陀螺而不是转身。
+    // 支撑脚 = 位置更低的那只脚（站立腿），踢出去的那条腿是抬起的一侧。
+    const pivotKey: keyof Joints = j.footF.y >= j.footB.y ? 'footF' : 'footB';
+    const pv = j[pivotKey];
+    const shiftX = pv.x - (pv.x * cy + pv.z * sy);
+    const shiftZ = pv.z - (-pv.x * sy + pv.z * cy);
     const out = {} as Record<keyof Joints, Pt>;
     for (const k of Object.keys(j) as (keyof Joints)[]) {
       const q = j[k];
       // 绕竖轴转体（真三维转身，不是翻面）
-      const x1 = q.x * cy + q.z * sy;
-      const z1 = -q.x * sy + q.z * cy;
+      const x1 = q.x * cy + q.z * sy + shiftX;
+      const z1 = -q.x * sy + q.z * cy + shiftZ;
       // 透视：离镜头越远越小
       const persp = Math.max(0.9, Math.min(1.1, FOCAL / (FOCAL + z1)));
       out[k] = {
@@ -793,7 +824,24 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   const ATTACK_KEYS = Object.keys(ATTACKS);
 
-  /** 按距离筛选可用招式，再按「威力 + 局面」加权随机 */
+  /** 招式元数据：起手/收招（秒）+ 战术标签 */
+  const MOVE_META: Record<string, { startup: number; recovery: number; breakGuard?: boolean; finisher?: boolean; fast?: boolean; counter?: boolean }> = {
+    jab: { startup: 0.18, recovery: 0.2, fast: true, counter: true },
+    cross: { startup: 0.3, recovery: 0.3 },
+    hook: { startup: 0.28, recovery: 0.25 },
+    uppercut: { startup: 0.32, recovery: 0.28 },
+    elbow: { startup: 0.22, recovery: 0.2, counter: true },
+    snapKick: { startup: 0.22, recovery: 0.2, fast: true, counter: true },
+    pushKick: { startup: 0.28, recovery: 0.3, breakGuard: true },
+    sideKick: { startup: 0.32, recovery: 0.32, finisher: true },
+    roundKick: { startup: 0.3, recovery: 0.3 },
+    axeKick: { startup: 0.34, recovery: 0.32, breakGuard: true },
+    spinKick: { startup: 0.5, recovery: 0.4, finisher: true },
+    flyKick: { startup: 0.4, recovery: 0.35, finisher: true },
+    scissorKick: { startup: 0.3, recovery: 0.3 },
+  };
+
+  /** 招式层：按距离筛选 + 效用函数打分 + 加权随机 */
   const pickAttack = (f: Fighter, d: number, opp: FightSnapshot['opponent'] | null): Decision => {
     const pool = ATTACK_KEYS.filter((k) => {
       const a = ATTACKS[k];
@@ -805,21 +853,25 @@ export function initFightBand(opts: FightOptions = {}): void {
     const list = pool.length ? pool : ['jab'];
     const weights = list.map((k) => {
       const a = ATTACKS[k];
+      const meta = MOVE_META[k];
       const power = a.hits.reduce((s, h) => s + (h.dmg[0] + h.dmg[1]) / 2, 0);
       // 基础：伤害越高概率越低（重招稀有）；连击招再打折
       let w = Math.max(0.3, 24 / power) * (a.hits.length > 1 ? 0.75 : 1);
 
-      // ---- 根据局面加权 ----
+      // ---- 局面加权 ----
       const oppHurt = opp && (opp.state === 'hurtLight' || opp.state === 'hurtHeavy' || opp.state === 'hurtUp' || opp.state === 'stumble');
       const oppBlock = opp && opp.state === 'block';
       const oppLow = opp && opp.hp < 30;
       const selfLow = f.hp < 30;
-      if (oppHurt && power >= 20) w *= 2.2;   // 对手硬直中 -> 重招追击
-      if (oppBlock && (k === 'pushKick' || k === 'axeKick')) w *= 2.0; // 破防
-      if (oppLow && (k === 'spinKick' || k === 'flyKick' || k === 'sideKick')) w *= 2.5; // 终结技
-      if (selfLow && power < 14) w *= 1.8;    // 自己残血 -> 轻快招抢速度
-      if (a.close && d < 30) w *= 1.4;        // 近身 -> 近招更合适
-      if (a.far && d >= 30) w *= 1.4;         // 远距 -> 远招更合适
+
+      if (oppHurt && power >= 20) w *= 2.2;                       // 对手硬直 -> 重招追击
+      if (oppBlock) w *= meta?.breakGuard ? 2.0 : 0.5;            // 对手格挡 -> 破防招加分，普通招减半
+      if (oppLow && meta?.finisher) w *= 2.5;                     // 对手残血 -> 终结技
+      if (selfLow && meta?.fast) w *= 1.8;                        // 自己残血 -> 轻快招抢速度
+      if (f.counterWindow > 0 && meta?.counter) w *= 3.0;         // 反击窗口 -> 反击招
+      if (f.comboTimer > 0 && meta?.fast) w *= 1.5;               // 连招窗口 -> 快速招衔接
+      if (a.close && d < 30) w *= 1.4;                            // 近身 -> 近招
+      if (a.far && d >= 30) w *= 1.4;                             // 远距 -> 远招
       return w;
     });
     const total = weights.reduce((a, b) => a + b, 0);
@@ -1075,6 +1127,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       f.flash = Math.max(0, f.flash - dt * 4.5);
       if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
 
+      if (f.counterWindow > 0) f.counterWindow -= dt;
+      if (f.comboTimer > 0) f.comboTimer -= dt;
       if (f.sway !== 0) {
         f.sway *= Math.exp(-dt * 7);
         if (Math.abs(f.sway) < 0.02) f.sway = 0;
