@@ -658,6 +658,10 @@ export interface FightSnapshot {
     recovering: boolean;
     /** 对手这招的威胁半径（经验值，用于判断自己是否在其射程内） */
     threatRange: number;
+    /** 对手剩余架势（0~100） */
+    guard: number;
+    /** 对手是否正处于破防硬直 */
+    guardBreak: boolean;
   };
 }
 
@@ -962,7 +966,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     pendingCombo: null,
     name: '',
     enterT: 0,
-    enterDur: 1.0,
+    enterDur: 0.8,
     downTimer: 0,
     ragdoll: null,
     links: [],
@@ -987,6 +991,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (opts.params?.aggression) f.aggression = opts.params.aggression;
       if (opts.params?.guardChance) f.guardChance = opts.params.guardChance;
       if (opts.params?.hp) { f.maxHp = opts.params.hp; f.hp = opts.params.hp; }
+      // 登场错峰：同组第二个晚 0.8s 登场，避免姓名牌重叠
+      if (i % 2 === 1) f.enterT = f.enterDur + 0.8;
       fighters.push(f);
     }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
@@ -1264,6 +1270,10 @@ export function initFightBand(opts: FightOptions = {}): void {
         recovering: !!ph && prog > ph.last + 0.05,
         // 威胁半径（经验换算）：对手这招大概能打多远
         threatRange: ph ? 30 * ph.reach : 24,
+        /** 对手剩余架势（0~100，见底就能破防） */
+        guard: opp?.guard ?? 100,
+        /** 对手是否正处于破防硬直（此时挨打更疼） */
+        guardBreak: (opp?.guardBreak ?? 0) > 0,
       },
     };
   };
@@ -1337,6 +1347,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
       if (oppHurt && power >= 20) w *= 2.2;                       // 对手硬直 -> 重招追击
       if (oppBlock) w *= meta?.breakGuard ? 2.0 : 0.5;            // 对手格挡 -> 破防招加分，普通招减半
+      if (opp && opp.guard < 58 && meta?.breakGuard) w *= 2.6;    // 对手架势见底 -> 猛砸破防
+      if (opp?.guardBreak) w *= power >= 20 ? 2.4 : 1.6;          // 对手破防硬直 -> 狠狠打
       if (oppLow && meta?.finisher) w *= 2.5;                     // 对手残血 -> 终结技
       if (selfLow && meta?.fast) w *= 1.8;                        // 自己残血 -> 轻快招抢速度
       if (f.counterWindow > 0 && meta?.counter) w *= 3.0;         // 反击窗口 -> 反击招
@@ -1441,6 +1453,11 @@ export function initFightBand(opts: FightOptions = {}): void {
         setState(f, 'retreat', rand(0.28, 0.5));
         break;
       case 'block':
+        // 破防中或架势见底：举不起盾，改成后撤
+        if (f.guardBreak > 0 || f.guard <= 18) {
+          setState(f, 'retreat', rand(0.3, 0.5));
+          break;
+        }
         setState(f, 'block');
         f.cool = Math.max(f.cool, 0.25);
         break;
@@ -3405,7 +3422,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     const torsoScale = 0.55 + 0.45 * Math.abs(Math.cos(yaw));
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
     // 登场动画：从上方落下（quadratic 快落）
-    const enterDrop = f.enterT > 0 ? -70 * f.scale * Math.pow(f.enterT / f.enterDur, 2) : 0;
+    const enterDrop = f.enterT > 0 ? -70 * f.scale * Math.pow(Math.min(1, f.enterT / f.enterDur), 2) : 0;
 
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
@@ -3716,6 +3733,8 @@ export function initFightBand(opts: FightOptions = {}): void {
         state: f.state,
         facing: f.facing,
         opponent: f.partner,
+        guard: Math.round(f.guard),
+        guardBreak: Number(f.guardBreak.toFixed(2)),
       })),
     /** 结束外部控制，回到本地 AI */
     reset: () => setController(null),
