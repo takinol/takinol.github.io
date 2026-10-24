@@ -14,6 +14,9 @@ import Base from '../layouts/Base.astro';
     </section>
 
     <div class="demo-controls">
+      <label class="who-label">角色
+        <select id="demo-who"></select>
+      </label>
       <button id="demo-prev" type="button">← 上一个</button>
       <button id="demo-next" type="button">下一个 →</button>
       <button id="demo-pause" type="button">⏸ 暂停</button>
@@ -72,6 +75,22 @@ import Base from '../layouts/Base.astro';
       color: var(--text-faint);
       margin-left: 4px;
     }
+    .who-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .who-label select {
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
     .demo-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -114,8 +133,13 @@ import Base from '../layouts/Base.astro';
 
     // ?auto=1 切换为 AI 自动对战模式（默认是逐招演示模式）
     // forceVisible：无头浏览器里 IntersectionObserver 判定不稳定，调试页直接绕过可见性门控
+    // ?l=&r= 指定左右角色（ROSTER 下标），用于固定对阵做大规模检测
     const qs0 = new URLSearchParams(location.search);
-    initFightBand({ canvasId: 'demo-canvas', demo: !qs0.has('auto'), forceVisible: true });
+    const l0 = Number(qs0.get('l'));
+    const r0 = Number(qs0.get('r'));
+    const matchup0 = qs0.has('l') && qs0.has('r') && !Number.isNaN(l0) && !Number.isNaN(r0) ? { left: l0, right: r0 } : undefined;
+    const manual0 = qs0.has('manual');
+    initFightBand({ canvasId: 'demo-canvas', demo: !qs0.has('auto') && !manual0, forceVisible: true, matchup: matchup0, manual: manual0 });
 
     const api = () => (window as any).takinolFight?.demo;
 
@@ -135,6 +159,22 @@ import Base from '../layouts/Base.astro';
     const listEl = document.getElementById('demo-list');
     const pauseBtn = document.getElementById('demo-pause') as HTMLButtonElement | null;
     const slowBtn = document.getElementById('demo-slow') as HTMLButtonElement | null;
+
+    // 角色切换：同步 15 人 roster，切换后用当前招式重新演示
+    const whoSel = document.getElementById('demo-who') as HTMLSelectElement | null;
+    const roster = (window as any).takinolFight?.demo?.roster?.() ?? [];
+    if (whoSel && roster.length) {
+      for (const r of roster) {
+        const o = document.createElement('option');
+        o.value = String(r.i);
+        o.textContent = `${r.i + 1}. ${r.name}`;
+        whoSel.appendChild(o);
+      }
+      whoSel.addEventListener('change', () => {
+        api()?.who(Number(whoSel.value));
+        sync();
+      });
+    }
 
     const items: { i: number; key: string; name: string }[] = api()?.list ?? [];
 
