@@ -1901,6 +1901,15 @@ html:not([data-theme="dark"]) .icon-sun {
 }
 
 /* ---------- 右侧标签集合 ---------- */
+/* 艺术感标题字体：得意黑 Smiley Sans（开源，已裁剪为 4.8KB 子集，只含“标签”等字符） */
+@font-face {
+  font-family: 'Smiley Sans Subset';
+  src: url('/fonts/smiley-subset.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 .tag-cloud {
   /* 往下挪一点，不要顶着页面顶部 */
   margin-top: 16px;
@@ -1908,11 +1917,11 @@ html:not([data-theme="dark"]) .icon-sun {
 }
 
 .tag-cloud-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-faint);
+  font-family: 'Smiley Sans Subset', var(--font-mono);
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--text);
   margin-bottom: 10px;
 }
 
