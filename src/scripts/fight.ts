@@ -841,6 +841,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     enterT: number;
     enterDur: number;
     downTimer: number;
+    /** 落地缓冲：>0 时下蹲压缩 */
+    landSquash: number;
     ragdoll: Record<string, Pt & { px: number; py: number }> | null;
     links: { a: string; b: string; len: number }[];
     getupFade: number;
@@ -968,6 +970,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     enterT: 0,
     enterDur: 0.8,
     downTimer: 0,
+    landSquash: 0,
     ragdoll: null,
     links: [],
     getupFade: 0,
@@ -991,8 +994,6 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (opts.params?.aggression) f.aggression = opts.params.aggression;
       if (opts.params?.guardChance) f.guardChance = opts.params.guardChance;
       if (opts.params?.hp) { f.maxHp = opts.params.hp; f.hp = opts.params.hp; }
-      // 登场错峰：同组第二个晚 0.8s 登场，避免姓名牌重叠
-      if (i % 2 === 1) f.enterT = f.enterDur + 0.8;
       fighters.push(f);
     }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
@@ -1009,9 +1010,10 @@ export function initFightBand(opts: FightOptions = {}): void {
       const half = slot / 2 - 16;
       const a = fighters[p * 2];
       const b = fighters[p * 2 + 1];
+      const entering = (a && a.enterT > 0) || (b && b.enterT > 0);
       if (a) {
 
-        a.x = cx - a.preferDist / 2;
+        a.x = cx - (entering ? 80 : a.preferDist / 2);
 
         a.facing = 1;
 
@@ -1022,7 +1024,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       }
       if (b) {
 
-        b.x = cx + b.preferDist / 2;
+        b.x = cx + (entering ? 80 : b.preferDist / 2);
 
         b.facing = -1;
 
@@ -1265,11 +1267,11 @@ export function initFightBand(opts: FightOptions = {}): void {
         x: opp?.x ?? 0,
         state: opp?.state ?? 'idle',
         // 起手：任意攻击招的命中帧之前 —— 这是「他要打过来了」的信号
-        windingUp: !!ph && prog < ph.first * 0.9,
+        windingUp: !!ph && prog < ph.first * 1.02,
         // 收招：最后一个命中帧之后 —— 这是可以抢进去打的破绽
         recovering: !!ph && prog > ph.last + 0.05,
         // 威胁半径（经验换算）：对手这招大概能打多远
-        threatRange: ph ? 30 * ph.reach : 24,
+        threatRange: ph ? 36 * ph.reach : 34,
         /** 对手剩余架势（0~100，见底就能破防） */
         guard: opp?.guard ?? 100,
         /** 对手是否正处于破防硬直（此时挨打更疼） */
@@ -1389,8 +1391,8 @@ export function initFightBand(opts: FightOptions = {}): void {
         if (r < 0.5) return guardUp(0);
         if (r < 0.78) return 'retreat';
       } else {
-        if (r < 0.44) return 'retreat'; // 主动拉开距离
-        if (r < 0.44 + f.guardChance * 0.42) return guardUp(0);
+        if (r < 0.34) return 'retreat'; // 主动拉开距离
+        if (r < 0.34 + f.guardChance * 0.6) return guardUp(0);
         if (r < 0.68) return 'jump';
         // 剩下 32%：不退反进，抢在他命中帧之前打断（读招成功）
         if (f.cool <= 0 && d < f.preferDist + 6) return pickAttack(f, d, opp);
@@ -1415,6 +1417,11 @@ export function initFightBand(opts: FightOptions = {}): void {
       // 冷却中不便出手 —— 在射程外一圈游走，忽远忽近
       return Math.random() < 0.45 + f.aggression * 0.2 ? 'approach' : 'retreat';
     }
+
+    // 对手招式已经出手（随时可能命中）：中概率防御，不再傻站着
+    if (!!ATTACKS[opp.state] && d < 44 && Math.random() < f.guardChance * 0.5) return guardUp(0);
+    // 近身却还在冷却（出不了手）：举盾等机会，别干站着挨打
+    if (d < 38 && f.cool > 0 && Math.random() < f.guardChance * 0.55) return guardUp(0);
 
     // 太远：靠近
     if (d > f.preferDist + 9) return 'approach';
@@ -1527,10 +1534,10 @@ export function initFightBand(opts: FightOptions = {}): void {
   const keepDistance = (f: Fighter) => {
     const opp = fighters[f.partner];
     if (!opp) return;
-    // 任何一方正在出招 / 倒地时不做硬性分离，否则突进类招式会被卡住打不到
-    if (ATTACKS[f.state] || ATTACKS[opp.state] || f.state === 'down' || f.state === 'stumble') return;
+    // 出招 / 倒地时放宽到「不重叠」即可（硬推开会卡住突进招，让它打不到）
+    const fighting = ATTACKS[f.state] || ATTACKS[opp.state] || f.state === 'down' || f.state === 'stumble';
     // 站架时保持一个看得出来的间距，别两个人贴在一起
-    const minGap = 25 * Math.max(f.scale, opp.scale);
+    const minGap = (fighting ? 13 : 25) * Math.max(f.scale, opp.scale);
     const dx = f.x - opp.x;
     if (Math.abs(dx) < minGap) {
       const s = dx === 0 ? (f.facing >= 0 ? -1 : 1) : Math.sign(dx);
@@ -1736,7 +1743,7 @@ export function initFightBand(opts: FightOptions = {}): void {
         f.guardBreak = Math.max(0, f.guardBreak - dt);
         if (f.guardBreak === 0) f.guard = 52;
       } else {
-        f.guard = Math.min(100, f.guard + (f.state === 'block' ? 7 : 24) * dt);
+        f.guard = Math.min(100, f.guard + (f.state === 'block' ? 4 : 16) * dt);
       }
       // 举盾有时限：不能一直举着当铁桶，超时自动放下并进入短暂冷却
       if (f.state === 'block') {
@@ -1749,7 +1756,12 @@ export function initFightBand(opts: FightOptions = {}): void {
       } else {
         f.blockT = 0;
       }
-      if (f.enterT > 0) f.enterT = Math.max(0, f.enterT - dt);
+      if (f.enterT > 0) {
+        const before = f.enterT;
+        f.enterT = Math.max(0, f.enterT - dt);
+        if (before > 0 && f.enterT <= 0) f.landSquash = 1; // 落地瞬间下蹲缓冲
+      }
+      if (f.landSquash > 0) f.landSquash = Math.max(0, f.landSquash - dt * 4);
       if (f.comboTimer > 0) f.comboTimer -= dt;
       if (f.comboTimer <= 0) { f.comboSteps = null; f.comboIndex = 0; }
       if (f.sway !== 0) {
@@ -1987,11 +1999,15 @@ export function initFightBand(opts: FightOptions = {}): void {
         }
       }
 
-      /* --- 待机时做决策（自主模式下自动出手，演示模式下关闭） --- */
-      if (!opts.demo && f.state === 'idle') {
+      /* --- 做决策（自主模式下自动出手，演示模式下关闭） --- */
+      // 走位 / 举盾中也允许反悔重新判断 —— 否则「走着走着看见对方起手再躲」永远来不及
+      const THINKABLE = f.state === 'idle' || f.state === 'approach' || f.state === 'retreat' || f.state === 'block';
+      if (!opts.demo && THINKABLE) {
         f.cool -= dt;
         f.lastDecision += dt;
-        if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > 0.1) {
+        // 站着时反应快，移动/举盾中反应慢一点（避免抽搐式反复横跳）
+        const gap = f.state === 'idle' ? 0.1 : 0.24;
+        if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > gap) {
           f.lastDecision = 0;
           applyDecision(f, opp, decide(f, opp));
         }
@@ -3422,7 +3438,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     const torsoScale = 0.55 + 0.45 * Math.abs(Math.cos(yaw));
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
     // 登场动画：从上方落下（quadratic 快落）
-    const enterDrop = f.enterT > 0 ? -70 * f.scale * Math.pow(Math.min(1, f.enterT / f.enterDur), 2) : 0;
+    const et = Math.max(0, Math.min(1, 1 - f.enterT / f.enterDur));
+    const enterDrop = f.enterT > 0 ? -70 * f.scale * (1 - et * et) : 0;
 
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
@@ -3433,12 +3450,13 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.restore();
 
     // 受击挤压：横向张开、纵向压扁
+    const ls = f.landSquash || 0;
     const sq = Math.min(1, f.flash);
     ctx.save();
-    if (sq > 0.02) {
+    if (sq > 0.02 || ls > 0.02) {
       const baseY = groundY();
       ctx.translate(f.x, baseY);
-      ctx.scale(1 + sq * 0.12, 1 - sq * 0.14);
+      ctx.scale(1 + sq * 0.12 + ls * 0.10, 1 - sq * 0.14 - ls * 0.22);
       ctx.translate(-f.x, -baseY);
     }
 
