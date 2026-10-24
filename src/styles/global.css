@@ -1806,18 +1806,29 @@ html:not([data-theme="dark"]) .icon-sun {
   overflow: hidden;
 }
 
-/* 封面照片垫在文字下面；透明度由文章 frontmatter 的 coverOpacity 控制 */
+/* 封面照片只占卡片右侧一块；透明度由文章 frontmatter 的 coverOpacity 控制 */
 .pc-cover {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: 46%;
   z-index: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   pointer-events: none;
-  /* 左侧稍淡，保证文字清晰；右侧照片更完整 */
-  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3), #000 58%);
-  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3), #000 58%);
+  /* 左边缘柔和淡出，照片不铺到卡片左边 */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 34%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 34%);
+}
+
+/* 窄屏时照片再收一点，避免压住文字 */
+@media (max-width: 560px) {
+  .pc-cover {
+    width: 38%;
+  }
 }
 
 /* 卡片内容浮在封面之上 */
