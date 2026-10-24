@@ -50,6 +50,11 @@ export interface Pose {
   armUFD: number;
   armLBD: number;
   armLFD: number;
+  /** 腿部深度外展（后旋踢需要腿扫出平面） */
+  legUBD: number;
+  legUFD: number;
+  legLBD: number;
+  legLFD: number;
 }
 
 const P = (p: Partial<Pose>): Pose => ({
@@ -70,6 +75,10 @@ const P = (p: Partial<Pose>): Pose => ({
   armUFD: 0,
   armLBD: 0,
   armLFD: 0,
+  legUBD: 0,
+  legUFD: 0,
+  legLBD: 0,
+  legLFD: 0,
   ...p,
 });
 
@@ -134,16 +143,16 @@ export const fk = (p: Pose): Joints => {
     const hand = add(elbow, dir(a2, ud + fd), L.foreArm);
     return { elbow, hand };
   };
-  const leg = (hip: Pt, u: number, f: number) => {
-    const knee = add(hip, dir(u, 0), L.thigh);
-    const foot = add(knee, dir(u + f, 0), L.shin);
+  const leg = (hip: Pt, u: number, f: number, ud: number, fd: number) => {
+    const knee = add(hip, dir(u, ud), L.thigh);
+    const foot = add(knee, dir(u + f, ud + fd), L.shin);
     return { knee, foot };
   };
 
   const b = arm(shoulderB, p.armUB, p.armLB, p.armUBD, p.armLBD);
   const f2 = arm(shoulderF, p.armUF, p.armLF, p.armUFD, p.armLFD);
-  const lb = leg(hipB, p.legUB, p.legLB);
-  const lf = leg(hipF, p.legUF, p.legLF);
+  const lb = leg(hipB, p.legUB, p.legLB, p.legUBD, p.legLBD);
+  const lf = leg(hipF, p.legUF, p.legLF, p.legUFD, p.legLFD);
 
   return {
     pelvis: { x: 0, y: 0, z: 0 },
@@ -182,8 +191,8 @@ const BLOCK = P({ lean: -0.05, head: 0.12, armUB: 1.35, armLB: 2.3, armUF: 1.4, 
 const JAB_WIND = P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2.0, armUF: 0.72, armLF: 2.15, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.1 });
 const JAB_HIT = P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, armLF: 0.0, legUB: -0.42, legLB: 0.26, legUF: 0.5, legLF: 0.04 });
 
-const CROSS_WIND = P({ lean: -0.06, head: -0.09, armUB: -0.5, armLB: 2.0, armUBD: -0.55, armUF: 1.0, armLF: 1.85, armUFD: 0.3, legUB: -0.22, legLB: 0.16, legUF: 0.28, legLF: 0.12, yaw: -0.22 });
-const CROSS_HIT = P({ lean: 0.42, head: 0.06, armUB: 1.58, armLB: 0.03, armUBD: -0.2, armUF: 0.5, armLF: 1.95, armUFD: 0.35, legUB: -0.5, legLB: 0.3, legUF: 0.56, legLF: 0.02, yaw: 0.16 });
+const CROSS_WIND = P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUBD: -0.45, armUF: 1.0, armLF: 1.9, armUFD: 0.25, legUB: -0.18, legLB: 0.14, legUF: 0.26, legLF: 0.12, yaw: -0.32 });
+const CROSS_HIT = P({ lean: 0.44, head: 0.08, armUB: 1.6, armLB: 0.02, armUBD: -0.12, armUF: 0.42, armLF: 1.98, armUFD: 0.3, legUB: -0.52, legLB: 0.32, legUF: 0.58, legLF: 0.02, yaw: 0.22 });
 
 /** 摆拳（横拳）：手臂保持弯曲，末端走弧线 */
 const HOOK_WIND = P({ lean: -0.1, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: -0.35, armLF: 1.1, armUFD: -1.0, legUB: -0.24, legLB: 0.18, legUF: 0.3, legLF: 0.12, yaw: -0.2 });
@@ -220,10 +229,10 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_WIND = P({ lean: 0.2, head: -0.02, armUB: 0.9, armLB: 1.9, armUF: 1.0, armLF: 1.7, legUB: 0.5, legLB: -0.8, legUF: 0.35, legLF: -0.7, yaw: 0 });
-const SPIN_TURN = P({ lean: 0.12, head: 0.05, armUB: 0.5, armLB: 1.4, armUF: 1.2, armLF: 1.2, legUB: 0.75, legLB: -0.9, legUF: -0.15, legLF: 0.05, yaw: 1.95 });
-const SPIN_HIT = P({ lean: 0.16, head: 0.1, armUB: -0.55, armLB: 0.8, armUF: 0.45, armLF: 1.0, legUB: -1.45, legLB: 0.05, legUF: -0.12, legLF: 0.08, yaw: 3.25 });
-const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
+const SPIN_WIND = P({ lean: 0.22, head: -0.02, armUB: 0.9, armLB: 1.85, armUF: 1.0, armLF: 1.7, legUB: 0.55, legLB: -0.7, legUBD: 0, legUF: 0.3, legLF: -0.6, yaw: 0 });
+const SPIN_TURN = P({ lean: 0.12, head: 0.06, armUB: 0.55, armLB: 1.5, armUF: 1.1, armLF: 1.25, legUB: 1.2, legLB: -0.35, legUBD: 1.1, legUF: -0.1, legLF: 0.05, yaw: 1.1 });
+const SPIN_HIT = P({ lean: 0.06, head: 0.1, armUB: -0.5, armLB: 0.75, armUF: 0.5, armLF: 0.95, legUB: 1.571, legLB: 0.02, legUBD: 2.0, legUF: -0.12, legLF: 0.06, yaw: 2.0 });
+const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
 const FLY_CROUCH = P({ lean: 0.34, head: -0.1, armUB: -0.6, armLB: 0.8, armUF: -0.7, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
@@ -262,7 +271,7 @@ const CLIPS: Record<string, Clip> = {
 
   // 拳法
   jab: { dur: 0.4, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.26, pose: JAB_WIND }, { t: 0.48, pose: JAB_HIT }, { t: 0.62, pose: JAB_HIT }, { t: 1, pose: GUARD }] },
-  cross: { dur: 0.52, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: CROSS_WIND }, { t: 0.54, pose: CROSS_HIT }, { t: 0.7, pose: CROSS_HIT }, { t: 1, pose: GUARD }] },
+  cross: { dur: 0.66, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: CROSS_WIND }, { t: 0.44, pose: CROSS_WIND }, { t: 0.62, pose: CROSS_HIT }, { t: 0.76, pose: CROSS_HIT }, { t: 1, pose: GUARD }] },
   hook: { dur: 0.54, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: HOOK_WIND }, { t: 0.54, pose: HOOK_HIT }, { t: 0.7, pose: HOOK_HIT }, { t: 1, pose: GUARD }] },
   uppercut: { dur: 0.62, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: UPPER_WIND }, { t: 0.56, pose: UPPER_HIT }, { t: 0.72, pose: UPPER_HIT }, { t: 1, pose: GUARD }] },
   elbow: { dur: 0.44, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.28, pose: ELBOW_WIND }, { t: 0.5, pose: ELBOW_HIT }, { t: 0.66, pose: ELBOW_HIT }, { t: 1, pose: GUARD }] },
@@ -273,7 +282,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 0.9, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.22, pose: SPIN_WIND }, { t: 0.44, pose: SPIN_TURN }, { t: 0.62, pose: SPIN_HIT }, { t: 0.74, pose: SPIN_HIT }, { t: 1, pose: SPIN_END }] },
+  spinKick: { dur: 1.0, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.2, pose: SPIN_WIND }, { t: 0.42, pose: SPIN_TURN }, { t: 0.6, pose: SPIN_HIT }, { t: 0.74, pose: SPIN_HIT }, { t: 1, pose: SPIN_END }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -358,6 +367,10 @@ const lerpPose = (a: Pose, b: Pose, k: number): Pose => ({
   armUFD: lerp(a.armUFD, b.armUFD, k),
   armLBD: lerp(a.armLBD, b.armLBD, k),
   armLFD: lerp(a.armLFD, b.armLFD, k),
+  legUBD: lerp(a.legUBD, b.legUBD, k),
+  legUFD: lerp(a.legUFD, b.legUFD, k),
+  legLBD: lerp(a.legLBD, b.legLBD, k),
+  legLFD: lerp(a.legLFD, b.legLFD, k),
 });
 
 /** 出拳/出腿的「命中帧」用 easeOutBack，让动作更脆 */
@@ -1192,12 +1205,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.fill();
   };
 
-  /** 带描边的锥形肢体：近端粗、远端细（Spine/DragonBones 里「部件 + 关节圆」的做法） */
-  const limb = (a: Pt, b: Pt, ra: number, rb: number, fill: string) => {
-    capsule(a, b, ra + 1.3, rb + 1.3, OUTLINE);
-    capsule(a, b, ra, rb, fill);
-  };
-
   const disc = (p: Pt, r: number, fill: string) => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, TAU);
@@ -1205,13 +1212,26 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.fill();
   };
 
-  /** 关节头：圆形覆盖，让弯折处不出现缺口 */
+  const ell = (p: Pt, rx: number, ry: number, rot: number, fill: string) => {
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rx, ry, rot, 0, TAU);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+
+  /** 带描边的锥形肢体 */
+  const limb = (a: Pt, b: Pt, ra: number, rb: number, fill: string) => {
+    capsule(a, b, ra + 1.3, rb + 1.3, OUTLINE);
+    capsule(a, b, ra, rb, fill);
+  };
+
+  /** 关节头：圆形覆盖，弯折处不留缺口 */
   const jointCap = (p: Pt, r: number, fill: string) => {
     disc(p, r + 1.25, OUTLINE);
     disc(p, r, fill);
   };
 
-  /** 躯干：宽肩窄腰的曲线轮廓，而不是方块 */
+  /** 躯干：宽肩窄腰的曲线轮廓 */
   const torsoShape = (pelvis: Pt, chest: Pt, k: number, fill: string) => {
     const dx = chest.x - pelvis.x;
     const dy = chest.y - pelvis.y;
@@ -1221,22 +1241,23 @@ export function initFightBand(opts: FightOptions = {}): void {
     const nx = -uy;
     const ny = ux;
     const wHip = 7.0 * k;
-    const wWaist = 5.7 * k;
-    const wChest = 8.4 * k;
-    const wShoulder = 9.2 * k;
+    const wWaist = 5.6 * k;
+    const wChest = 8.6 * k;
+    const wShoulder = 9.4 * k;
     const at = (t: number, w: number, side: number): Pt => ({
       x: pelvis.x + ux * len * t + nx * w * side,
       y: pelvis.y + uy * len * t + ny * w * side,
+      z: 0,
     });
     const pts = [
       at(-0.05, wHip, -1),
       at(0.3, wWaist, -1),
-      at(0.7, wChest, -1),
-      at(1.04, wShoulder, -1),
-      at(1.16, wShoulder * 0.72, -1),
-      at(1.16, wShoulder * 0.72, 1),
-      at(1.04, wShoulder, 1),
-      at(0.7, wChest, 1),
+      at(0.68, wChest, -1),
+      at(1.02, wShoulder, -1),
+      at(1.14, wShoulder * 0.7, -1),
+      at(1.14, wShoulder * 0.7, 1),
+      at(1.02, wShoulder, 1),
+      at(0.68, wChest, 1),
       at(0.3, wWaist, 1),
       at(-0.05, wHip, 1),
     ];
@@ -1252,76 +1273,18 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.fill();
   };
 
-  /** 头：椭圆头骨 + 头发块 + 表情（受伤时变成 ›‹ 眼） */
-  const headShape = (head: Pt, k: number, body: string, trim: string, expr: 'normal' | 'hurt' | 'down') => {
-    const rx = L.headR * k;
-    const ry = (L.headR + 0.8) * k;
+  /** 鞋：脚尖必须朝向「面向」的一侧（facing） */
+  const shoe = (foot: Pt, facing: number, k: number, fill: string) => {
+    const fx = facing; // 只往面向方向伸
+    const heelX = foot.x - fx * 2.6 * k;
+    const toeX = foot.x + fx * 6.2 * k;
+    const top = foot.y - 1.6 * k;
+    const bot = foot.y + 3.4 * k;
     ctx.beginPath();
-    ctx.ellipse(head.x, head.y, rx + 1.5, ry + 1.5, 0, 0, TAU);
-    ctx.fillStyle = OUTLINE;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(head.x, head.y, rx, ry, 0, 0, TAU);
-    ctx.fillStyle = body;
-    ctx.fill();
-    // 头发：覆盖上半部，带斜刘海缺口
-    ctx.beginPath();
-    ctx.ellipse(head.x, head.y - ry * 0.3, rx + 0.8, ry * 0.86, 0, Math.PI * 0.99, Math.PI * 2.01);
-    ctx.lineTo(head.x + rx * 0.62, head.y - ry * 0.06);
-    ctx.lineTo(head.x + rx * 0.1, head.y - ry * 0.3);
-    ctx.closePath();
-    ctx.fillStyle = trim;
-    ctx.fill();
-
-    const ex = head.x + rx * 0.16;
-    const ey = head.y + ry * 0.06;
-    const gap = rx * 0.36;
-    if (expr === 'normal') {
-      disc({ x: ex + gap, y: ey }, Math.max(1.3, rx * 0.19), '#1b1512');
-      disc({ x: ex - gap * 0.95, y: ey }, Math.max(1.3, rx * 0.19), '#1b1512');
-    } else {
-      ctx.strokeStyle = '#1b1512';
-      ctx.lineWidth = Math.max(1.2, rx * 0.16);
-      ctx.lineCap = 'round';
-      for (const s of [1, -1]) {
-        const cx = ex + gap * s;
-        ctx.beginPath();
-        ctx.moveTo(cx - rx * 0.16, ey - ry * 0.14);
-        ctx.lineTo(cx + rx * 0.16, ey);
-        ctx.lineTo(cx - rx * 0.16, ey + ry * 0.14);
-        ctx.stroke();
-      }
-    }
-    if (expr !== 'normal') {
-      ctx.save();
-      ctx.globalAlpha *= 0.5;
-      disc({ x: head.x + rx * 0.55, y: head.y + ry * 0.42 }, rx * 0.22, '#e8556d');
-      ctx.restore();
-    }
-  };
-
-  /** 拳头：球 + 拇指小凸起 */
-  const fist = (p: Pt, k: number, fill: string) => {
-    jointCap(p, 3.3 * k, fill);
-    disc({ x: p.x - 1.4 * k, y: p.y + 1.7 * k }, 1.5 * k, fill);
-  };
-
-  /** 鞋：沿小腿方向伸出的楔形 */
-  const shoe = (foot: Pt, knee: Pt, k: number, fill: string) => {
-    const ang = Math.atan2(foot.y - knee.y, foot.x - knee.x) + Math.PI / 2;
-    const tx = Math.cos(ang);
-    const ty = Math.sin(ang);
-    const L1 = 5.6 * k;
-    const L2 = 2.8 * k;
-    const pts: Pt[] = [
-      { x: foot.x - tx * L2 * 0.4, y: foot.y - ty * L2 * 0.4 },
-      { x: foot.x + tx * L1, y: foot.y + ty * L1 },
-      { x: foot.x + tx * L1 * 0.9, y: foot.y + ty * L1 * 0.9 + 2.4 * k },
-      { x: foot.x - tx * L2 * 0.2, y: foot.y + 2.6 * k },
-    ];
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.moveTo(heelX, top + 1.2 * k);
+    ctx.lineTo(toeX - fx * 1.2 * k, top);
+    ctx.quadraticCurveTo(toeX + fx * 0.6 * k, foot.y + 0.4 * k, toeX - fx * 1.6 * k, bot);
+    ctx.lineTo(heelX, bot);
     ctx.closePath();
     ctx.lineJoin = 'round';
     ctx.strokeStyle = OUTLINE;
@@ -1331,14 +1294,112 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.fill();
   };
 
-  /** 整具身体：按深度顺序分层绘制（含远近明暗） */
+  /** 手：手掌 + 拇指 + 指节（不再是圆点） */
+  const hand = (p: Pt, k: number, fill: string, facing: number) => {
+    const palmR = 3.2 * k;
+    disc(p, palmR + 1.3, OUTLINE);
+    ell({ x: p.x, y: p.y, z: 0 }, palmR * 1.02, palmR * 0.9, 0, fill);
+    // 拇指（朝着身体一侧）
+    ell({ x: p.x - facing * 1.5 * k, y: p.y + 1.9 * k, z: 0 }, 1.6 * k, 1.3 * k, 0.5, fill);
+    // 指节线
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 0.9 * k;
+    ctx.beginPath();
+    ctx.moveTo(p.x + facing * 0.6 * k, p.y - 1.8 * k);
+    ctx.lineTo(p.x + facing * 2.2 * k, p.y - 0.6 * k);
+    ctx.moveTo(p.x + facing * 0.2 * k, p.y + 0.2 * k);
+    ctx.lineTo(p.x + facing * 2.4 * k, p.y + 1.1 * k);
+    ctx.stroke();
+  };
+
+  /** 头：颅骨 + 下颌 + 耳朵 + 头发 + 五官，朝向由 facing 决定 */
+  const headShape = (
+    head: Pt,
+    k: number,
+    body: string,
+    trim: string,
+    expr: 'normal' | 'hurt' | 'down',
+    facing: number
+  ) => {
+    const rx = L.headR * k;
+    const ry = (L.headR + 0.6) * k;
+
+    // 脖子先垫一层（避免下巴和身体之间露空）
+    ell({ x: head.x - facing * rx * 0.1, y: head.y + ry * 0.95, z: 0 }, rx * 0.5, ry * 0.45, 0, OUTLINE);
+
+    // 颅骨（描边 + 填充）
+    ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx + 1.5, ry + 1.5, 0, OUTLINE);
+    ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx, ry, 0, body);
+
+    // 下颌 / 下巴（朝面向方向鼓出）
+    ell({ x: head.x + facing * rx * 0.3, y: head.y + ry * 0.5, z: 0 }, rx * 0.58, ry * 0.46, 0, body);
+
+    // 耳朵（后侧）
+    ell({ x: head.x - facing * rx * 0.86, y: head.y + ry * 0.04, z: 0 }, rx * 0.24, ry * 0.3, 0, body);
+
+    // 头发：覆盖颅骨上半与后脑
+    ctx.beginPath();
+    ctx.ellipse(head.x - facing * rx * 0.16, head.y - ry * 0.34, rx * 1.04, ry * 0.86, 0, Math.PI * 0.98, Math.PI * 2.06);
+    ctx.closePath();
+    ctx.fillStyle = trim;
+    ctx.fill();
+    // 刘海（朝面向方向垂下一角）
+    ctx.beginPath();
+    ctx.moveTo(head.x - facing * rx * 0.2, head.y - ry * 0.9);
+    ctx.quadraticCurveTo(head.x + facing * rx * 0.75, head.y - ry * 0.7, head.x + facing * rx * 0.42, head.y - ry * 0.05);
+    ctx.quadraticCurveTo(head.x + facing * rx * 0.1, head.y - ry * 0.4, head.x - facing * rx * 0.2, head.y - ry * 0.9);
+    ctx.fillStyle = trim;
+    ctx.fill();
+
+    // 眼睛（白眼球 + 瞳孔）
+    const eyeX = head.x + facing * rx * 0.46;
+    const eyeY = head.y + ry * 0.02;
+    if (expr === 'normal') {
+      ell({ x: eyeX, y: eyeY, z: 0 }, rx * 0.2, ry * 0.19, 0, '#FFFFFF');
+      disc({ x: eyeX + facing * rx * 0.05, y: eyeY, z: 0 }, Math.max(0.9, rx * 0.11), '#1b1512');
+      // 眉毛
+      ctx.strokeStyle = '#1b1512';
+      ctx.lineWidth = Math.max(1, rx * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(eyeX - facing * rx * 0.24, eyeY - ry * 0.3);
+      ctx.lineTo(eyeX + facing * rx * 0.24, eyeY - ry * 0.24);
+      ctx.stroke();
+    } else {
+      // 受伤：›‹ 眼
+      ctx.strokeStyle = '#1b1512';
+      ctx.lineWidth = Math.max(1.2, rx * 0.15);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(eyeX - facing * rx * 0.2, eyeY - ry * 0.16);
+      ctx.lineTo(eyeX + facing * rx * 0.2, eyeY);
+      ctx.lineTo(eyeX - facing * rx * 0.2, eyeY + ry * 0.16);
+      ctx.stroke();
+    }
+
+    // 鼻子（小鼓包）
+    ell({ x: head.x + facing * rx * 0.8, y: head.y + ry * 0.22, z: 0 }, rx * 0.14, ry * 0.13, 0, body);
+    // 嘴
+    ctx.strokeStyle = '#1b1512';
+    ctx.lineWidth = Math.max(0.9, rx * 0.1);
+    ctx.beginPath();
+    if (expr === 'normal') {
+      ctx.moveTo(head.x + facing * rx * 0.36, head.y + ry * 0.5);
+      ctx.lineTo(head.x + facing * rx * 0.72, head.y + ry * 0.48);
+    } else {
+      ell({ x: head.x + facing * rx * 0.52, y: head.y + ry * 0.5, z: 0 }, rx * 0.16, ry * 0.14, 0, '#5a1f24');
+    }
+    ctx.stroke();
+  };
+
+  /** 整具身体：按深度排序分层绘制 */
   const drawFigure = (
     get: (k: string) => Pt,
     k: number,
     body: string,
     trim: string,
     dark: string,
-    expr: 'normal' | 'hurt' | 'down'
+    expr: 'normal' | 'hurt' | 'down',
+    facing: number
   ) => {
     const pelvis = get('pelvis');
     const chest = get('chest');
@@ -1347,7 +1408,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 深度明暗：越远越暗，越近越亮（制造前后层次）
     const depthAlpha = (z: number) => Math.max(0.66, Math.min(1.06, 0.72 + (z + 14) * 0.016));
 
     const zB = (get('elbowB').z || 0) + (get('handB').z || 0);
@@ -1362,8 +1422,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.globalAlpha *= depthAlpha(((e.z || 0) + (h.z || 0)) / 2);
       limb(s, e, 4.5 * k, 3.7 * k, base);
       jointCap(e, 3.7 * k, base);
-      limb(e, h, 3.6 * k, 3.1 * k, base);
-      fist(h, k, base);
+      limb(e, h, 3.5 * k, 3.0 * k, base);
+      hand(h, k, base, facing);
       ctx.restore();
     };
 
@@ -1375,12 +1435,11 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.globalAlpha *= depthAlpha(((knee.z || 0) + (foot.z || 0)) / 2);
       limb(hip, knee, (which === 'B' ? 5.0 : 5.6) * k, (which === 'B' ? 4.0 : 4.5) * k, base);
       jointCap(knee, (which === 'B' ? 4.0 : 4.5) * k, base);
-      limb(knee, foot, (which === 'B' ? 3.8 : 4.2) * k, 3.3 * k, base);
-      shoe(foot, knee, k, base);
+      limb(knee, foot, (which === 'B' ? 3.8 : 4.2) * k, 3.2 * k, base);
+      shoe(foot, facing, k, base);
       ctx.restore();
     };
 
-    // 远侧手臂 → 远侧腿 → 躯干 → 头 → 近侧腿 → 近侧手臂
     drawArm(backArmIsFarther ? 'B' : 'F', dark);
     drawLeg('B', dark);
 
@@ -1398,11 +1457,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     capsule({ x: bcx + nx * bw, y: bcy + ny * bw, z: 0 }, { x: bcx - nx * bw, y: bcy - ny * bw, z: 0 }, 2.0 * k, 2.0 * k, trim);
 
     // 脖子
-    const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.14, y: chest.y + (chest.y - pelvis.y) * 0.14, z: 0 };
-    limb(neckA, { x: head.x, y: head.y + L.headR * k * 0.65, z: 0 }, 3.4 * k, 3.2 * k, dark);
+    const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.1, y: chest.y + (chest.y - pelvis.y) * 0.1, z: 0 };
+    limb(neckA, { x: head.x - facing * 3 * k, y: head.y + L.headR * k * 0.7, z: 0 }, 3.5 * k, 3.2 * k, dark);
 
-    // 头
-    headShape(head, k, body, trim, expr);
+    headShape(head, k, body, trim, expr, facing);
 
     drawLeg('F', body);
     drawArm(backArmIsFarther ? 'F' : 'B', body);
@@ -1460,7 +1518,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       );
     } else {
       const { world } = place(f);
-      drawFigure((key) => world[key as keyof Joints], f.scale, body, trim, dark, expr);
+      drawFigure((key) => world[key as keyof Joints], f.scale, body, trim, dark, expr, f.facing);
     }
     ctx.restore();
     ctx.restore();
