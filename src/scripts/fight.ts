@@ -824,6 +824,17 @@ interface AtkHit {
   part?: StrikePart;
   /** 武器尖端长度（px，沿前臂方向刚性延伸）；-1 = 用链锤甩动球 trinket 做接触点 */
   tip?: number;
+  /**
+   * 攻击判定体的粗细（半径 px）—— 这就是「武器的胖瘦」，写死在招式数据里。
+   * 枪杆细 ≈ 3.5，锤头粗 ≈ 7，盾面 ≈ 9，拳脚不填则按体型自动取。
+   */
+  w?: number;
+  /**
+   * 判定持续窗口（片段进度长度，默认 0.14）。
+   * 不是「恰好 h.at 那一帧」，而是从 h.at 起持续这么长，
+   * 武器扫过去的过程中只要和身体框叠上就算命中 —— 这才符合真实手感。
+   */
+  act?: number;
 }
 
 interface Atk {
@@ -872,15 +883,17 @@ const ATTACKS: Record<string, Atk> = {
     forward: 90,
     far: true,
   },
-  /* ===== 武器专属招式：距离/轨迹/节奏按流派分化 ===== */
-  thrust: { part: 'handF', hits: [{ at: 0.52, dmg: [14, 22], reach: 1.75, knock: 260, tip: 30 }], hitstop: 0.07, react: 'heavy', forward: 130, far: true },
-  smash: { part: 'handB', hits: [{ at: 0.56, dmg: [22, 34], reach: 1.25, knock: 480, tip: 22 }], hitstop: 0.15, react: 'heavy', close: true },
-  bash: { part: 'handF', hits: [{ at: 0.5, dmg: [12, 19], reach: 1.15, knock: 330, tip: 8 }], hitstop: 0.08, react: 'heavy', close: true, forward: 80 },
+  /* ===== 武器专属招式：距离/轨迹/节奏按流派分化 =====
+     注意 `w` = 攻击判定体的粗细（px），这是「武器的胖瘦」，写在数据里而不是靠调 offset。
+     `act` = 判定持续窗口（片段进度），窗口内武器扫过就判，不是只判一帧。 */
+  thrust: { part: 'handF', hits: [{ at: 0.5, dmg: [14, 22], reach: 1.75, knock: 260, tip: 30, w: 3.5, act: 0.18 }], hitstop: 0.07, react: 'heavy', forward: 130, far: true },
+  smash: { part: 'handB', hits: [{ at: 0.54, dmg: [22, 34], reach: 1.25, knock: 420, tip: 22, w: 7, act: 0.2 }], hitstop: 0.15, react: 'heavy', close: true },
+  bash: { part: 'handF', hits: [{ at: 0.5, dmg: [12, 19], reach: 1.15, knock: 330, tip: 8, w: 9, act: 0.16 }], hitstop: 0.08, react: 'heavy', close: true, forward: 80 },
   slash: {
     part: 'handF',
     hits: [
-      { at: 0.38, dmg: [8, 13], reach: 1.1, knock: 120, tip: 11 },
-      { at: 0.56, dmg: [10, 16], reach: 1.1, knock: 200, part: 'handB', tip: 11 },
+      { at: 0.38, dmg: [8, 13], reach: 1.1, knock: 120, tip: 11, w: 4, act: 0.14 },
+      { at: 0.56, dmg: [10, 16], reach: 1.1, knock: 200, part: 'handB', tip: 11, w: 4, act: 0.14 },
     ],
     hitstop: 0.05,
     react: 'light',
@@ -888,10 +901,10 @@ const ATTACKS: Record<string, Atk> = {
     forward: 60,
   },
   palm: { part: 'handF', hits: [{ at: 0.4, dmg: [9, 14], reach: 1.15, knock: 200 }], hitstop: 0.04, react: 'light' },
-  swing: { part: 'handB', hits: [{ at: 0.54, dmg: [20, 30], reach: 1.35, knock: 380, tip: 20 }], hitstop: 0.12, react: 'heavy' },
-  iai: { part: 'handB', hits: [{ at: 0.5, dmg: [26, 38], reach: 1.6, knock: 420, tip: 24 }], hitstop: 0.14, react: 'heavy', far: true, forward: 120 },
-  flailSwing: { part: 'handF', hits: [{ at: 0.58, dmg: [18, 28], reach: 1.5, knock: 350, tip: -1 }], hitstop: 0.1, react: 'heavy' },
-  gearPunch: { part: 'handF', hits: [{ at: 0.54, dmg: [19, 29], reach: 1.1, knock: 300, tip: 10 }], hitstop: 0.1, react: 'heavy', close: true, forward: 70 },
+  swing: { part: 'handB', hits: [{ at: 0.54, dmg: [20, 30], reach: 1.35, knock: 380, tip: 20, w: 6.5, act: 0.2 }], hitstop: 0.12, react: 'heavy' },
+  iai: { part: 'handB', hits: [{ at: 0.5, dmg: [26, 38], reach: 1.6, knock: 420, tip: 24, w: 3.5, act: 0.16 }], hitstop: 0.14, react: 'heavy', far: true, forward: 120 },
+  flailSwing: { part: 'handF', hits: [{ at: 0.58, dmg: [18, 28], reach: 1.5, knock: 350, tip: -1, w: 5, act: 0.2 }], hitstop: 0.1, react: 'heavy' },
+  gearPunch: { part: 'handF', hits: [{ at: 0.54, dmg: [19, 29], reach: 1.1, knock: 300, tip: 10, w: 6, act: 0.16 }], hitstop: 0.1, react: 'heavy', close: true, forward: 70 },
   bolt: { part: 'handF', hits: [{ at: 0.48, dmg: [13, 20], reach: 1, knock: 220 }], hitstop: 0.05, react: 'light', projectile: 'bolt', far: true },
   knee: { part: 'kneeF', hits: [{ at: 0.42, dmg: [12, 18], reach: 1.1, knock: 260 }], hitstop: 0.07, react: 'heavy', close: true, forward: 60 },
   // 投技：不可格挡（克蹲防），命中必倒
@@ -2244,6 +2257,20 @@ export function initFightBand(opts: FightOptions = {}): void {
     hitDone: boolean[];
     /** 这一招是否已经打到过人（含被格挡）：false 且招式播完 = 挥空，要吃收招惩罚 */
     landedHit: boolean;
+    /**
+     * 出招瞬间的记录位置 —— 前冲位移`的基准点。
+     * 位移改成「帧的纯函数」后，命中帧的位置完全可预测（DEMO 反推定位依赖这个）。
+     */
+    atkStartX: number;
+    /** 当前帧的攻击判定体（每个 hit 一个），扫掠检测需要 */
+    hitVols: HitVolume[];
+    /** 上一帧的攻击判定体（用于 prev→curr 扫掠） */
+    hitPrevVols: HitVolume[];
+    /**
+     * 命中后冻结前冲：武器顶到人就不该继续往前走，
+     * 否则长枪/长刀会从对手身体里穿过去（就是"穿模"的根源）。
+     */
+    advanceFrozen: boolean;
     flash: number;
     bob: number;
     stun: number;
@@ -2376,6 +2403,15 @@ export function initFightBand(opts: FightOptions = {}): void {
   let shake = 0;
   let shakeDir = 0; // 定向震屏：画面沿打击方向的偏移量
   let hitstop = 0; // 命中定格剩余时间（秒）
+  /** 最近一次几何判定的命中点（调试可视化用：白点 + 重叠量） */
+  let debugHitPoint: { x: number; y: number; pen: number; life: number; zone: string } | null = null;
+  /** 每帧的几何判定读数（画在画布顶部，逐招微调时直接看这行） */
+  let debugGeo: {
+    move: string; prog: number; pen: number; hit: boolean; zone: string; r: number;
+    v1: number; v2: number; tx: number; ax: number; parts: string;
+  } | null = null;
+  /** DEMO 定位的中间量（只在 ?debug=frames 时显示，用于排查站位算错） */
+  let debugDemo = '';
   let zoom = 0; // zoom punch：重击瞬间推镜，>0 时画面整体放大
   let impactRings: ImpactRing[] = [];
   let speedLines: SpeedLine[] = [];
@@ -2886,6 +2922,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     pose: { ...IDLE_A },
     hitDone: [],
     landedHit: false,
+    atkStartX: 0,
+    hitVols: [],
+    hitPrevVols: [],
+    advanceFrozen: false,
     flash: 0,
     bob: rand(0, 10),
     stun: 0,
@@ -3197,6 +3237,358 @@ export function initFightBand(opts: FightOptions = {}): void {
   };
 
   /* ============================================================
+   * 新版碰撞检测：体积碰撞 + 扫描判定（替代针尖戳气球）
+   * ------------------------------------------------------------
+   * 架构：逻辑与表现分离
+   *   - HitVolume:  攻击方的命中体（胶囊/线段+半径），从骨骼采样但独立于骨骼
+   *   - Hurtbox:    受击方的受击体（胶囊：骨盆→头），替代原来的单线段
+   *   - SweptHit:   连续碰撞检测——把上一帧到当前帧的 HitVolume 路径扫过空间，
+   *                 测试与 Hurtbox 是否有重叠。解决高速攻击穿模问题。
+   *   - 判定标准：几何重叠量 > 0 就是命中，不需要 magic threshold
+   *
+   * 迁移策略（新旧并行）：
+   *   - 旧 contactCheck 保留不动，新 sweptHit 并行运行
+   *   - 每帧对比两者结果，日志标记不一致
+   *   - 确认新系统稳定后删除旧代码
+   * ============================================================ */
+
+  /** 命中体积形状 */
+  interface HitVolume {
+    /** 胶囊/线段的起点（世界坐标） */
+    p1: Pt;
+    /** 胶囊/线段的终点（世界坐标） */
+    p2: Pt;
+    /** 半径（px）：攻击部位的粗细。拳头≈5~7，脚≈6~9，武器尖端≈3~4 */
+    radius: number;
+  }
+
+  /** 受击盒：角色躯干的碰撞体 */
+  interface Hurtbox {
+    /** 躯干胶囊起点（骨盆，世界坐标） */
+    p1: Pt;
+    /** 躯干胶囊终点（头，世界坐标） */
+    p2: Pt;
+    /** 半径（px）：躯干厚度。scale=1 时约 8~10 */
+    radius: number;
+  }
+
+  /** 扫描命中结果 */
+  interface SweptHitResult {
+    /** 是否发生碰撞 */
+    hit: boolean;
+    /** 碰撞点（世界坐标，用于打击特效/伤害定位） */
+    point: Pt;
+    /** 两体积间的最小距离（负值 = 渗透深度） */
+    penetration: number;
+    /** 哪一帧命中的：'prev'(扫描路径中) | 'curr'(当前帧) */
+    when: 'prev' | 'curr';
+  }
+
+  /**
+   * 两条线段之间的最近点对（Dan Sunday 的标准解法）
+   * 用于胶囊vs胶囊、线段vs胶囊的核心几何原语
+   *
+   * 参数化：P(s) = a1 + s*d1，Q(t) = b1 + t*d2，s,t ∈ [0,1]
+   * 最小化 |P(s)-Q(t)|² ⇒ 解下面的 2x2 线性系统。
+   * 注意：s 的分子是 (b*f - c*e)，符号写反会导致最近点永远落在端点，
+   *      长武器（枪/锤）会因此判不中，是"抡砸完全没反应"的直接原因。
+   */
+  const closestPointsBetweenSegments = (
+    a1: Pt, a2: Pt, b1: Pt, b2: Pt,
+  ): { pa: Pt; pb: Pt; t: number; u: number } => {
+    const d1 = { x: a2.x - a1.x, y: a2.y - a1.y, z: a2.z - a1.z };
+    const d2 = { x: b2.x - b1.x, y: b2.y - b1.y, z: b2.z - b1.z };
+    const r = { x: a1.x - b1.x, y: a1.y - b1.y, z: a1.z - b1.z };
+
+    const A = d1.x * d1.x + d1.y * d1.y + d1.z * d1.z; // |d1|²
+    const E = d2.x * d2.x + d2.y * d2.y + d2.z * d2.z; // |d2|²
+    const B = d1.x * d2.x + d1.y * d2.y + d1.z * d2.z; // d1·d2
+    const C = d1.x * r.x + d1.y * r.y + d1.z * r.z;    // d1·r
+    const F = d2.x * r.x + d2.y * r.y + d2.z * r.z;    // d2·r
+
+    const EPS = 1e-8;
+    const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+    let s: number;
+    let t: number;
+
+    if (A <= EPS && E <= EPS) {
+      // 两条线段都退化成点
+      s = 0;
+      t = 0;
+    } else if (A <= EPS) {
+      // A 退化成点
+      s = 0;
+      t = clamp01(F / E);
+    } else if (E <= EPS) {
+      // B 退化成点
+      t = 0;
+      s = clamp01(-C / A);
+    } else {
+      const denom = A * E - B * B;
+      s = denom > EPS ? clamp01((B * F - C * E) / denom) : 0;
+      t = (B * s + F) / E;
+      if (t < 0) {
+        t = 0;
+        s = clamp01(-C / A);
+      } else if (t > 1) {
+        t = 1;
+        s = clamp01((B - C) / A);
+      }
+    }
+
+    return {
+      pa: { x: a1.x + d1.x * s, y: a1.y + d1.y * s, z: a1.z + d1.z * s },
+      pb: { x: b1.x + d2.x * t, y: b1.y + d2.y * t, z: b1.z + d2.z * t },
+      t: s,
+      u: t,
+    };
+  };
+
+  /**
+   * 静态胶囊 vs 胶囊相交测试
+   * @returns penetration 深度（负值=分离，正值=渗透）
+   */
+  const capsuleVsCapsule = (
+    volA: HitVolume, volB: HitVolume,
+  ): { hit: boolean; point: Pt; penetration: number } => {
+    const { pa, pb } = closestPointsBetweenSegments(volA.p1, volA.p2, volB.p1, volB.p2);
+    const dx = pb.x - pa.x;
+    const dy = pb.y - pa.y;
+    const dz = pb.z - pa.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const sumR = volA.radius + volB.radius;
+    const pen = sumR - dist; // 正值 = 重叠
+    if (pen <= 0) return { hit: false, point: pa, penetration: pen };
+    // 碰撞点取两最近点的中点
+    const nx = dist > 0.001 ? dx / dist : 1;
+    const ny = dist > 0.001 ? dy / dist : 0;
+    const nz = dist > 0.001 ? dz / dist : 0;
+    // 把 pa 沿法向推到两球面的交界处
+    const surfA = volA.radius;
+    return {
+      hit: true,
+      point: {
+        x: pa.x + nx * surfA,
+        y: pa.y + ny * surfA,
+        z: pa.z + nz * surfA,
+      },
+      penetration: pen,
+    };
+  };
+
+  /**
+   * 从 Fighter 的骨骼姿态构建命中体积（HitVolume）
+   *
+   * 设计原则：
+   *   - 骨骼仅作为「可视化锚点」提供位置参考
+   *   - HitVolume 是独立的几何体，有自己的 radius
+   *   - 对于带 tip 的武器招式，p2 沿前臂方向延伸 tipLen
+   *
+   * @param f       攻击方
+   * @param part    攻击部位（手/脚/肘/膝）
+   * @param tipLen  武器尖端延伸长度（px，已含 scale）
+   * @returns HitVolume 命中体积
+   */
+  const buildHitVolume = (f: Fighter, part: StrikePart, tipLen = 0, radiusPx = 0): HitVolume => {
+    const aw = place(f).world;
+    const hand = aw[part as keyof Joints];
+
+    // 拳脚判定的默认粗细：按体型缩放（大个子拳头更大）
+    const baseRadius = 4.5 + f.scale * 2.5;
+
+    // 链锤：用甩动球 trinket 的位置当球心（半径 5）
+    if (tipLen === -1) {
+      const tr = f.trinket;
+      if (tr && !Number.isNaN(tr.x)) {
+        return { p1: { x: tr.x, y: tr.y, z: 0 }, p2: { x: tr.x, y: tr.y, z: 0 }, radius: radiusPx || 5 };
+      }
+      tipLen = 14; // 演示定位时链球还没甩出去，用手前 14px 近似
+    }
+
+    if (tipLen > 0) {
+      // 有武器尖端：从手沿前臂方向延伸 → 形成长条形命中体
+      const elbowKey = part === 'handB' ? 'elbowB' : part === 'handF' ? 'elbowF' : null;
+      if (elbowKey) {
+        const elbow = aw[elbowKey as keyof Joints];
+        const dx = hand.x - elbow.x;
+        const dy = hand.y - elbow.y;
+        const dz = hand.z - elbow.z;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+        // 武器尖端终点
+        const tip: Pt = {
+          x: hand.x + (dx / d) * tipLen,
+          y: hand.y + (dy / d) * tipLen,
+          z: hand.z + (dz / d) * tipLen,
+        };
+        // 武器判定体：手→尖端，粗细由招式数据 w 决定（不填则按体型）
+        return { p1: hand, p2: tip, radius: radiusPx || baseRadius * 0.65 };
+      }
+    }
+
+    // 无尖端：用肢体近端（肘/肩/膝）到手/脚作为短胶囊
+    let nearKey: keyof Joints | null = null;
+    if (part.startsWith('hand')) nearKey = part === 'handB' ? 'elbowB' : 'elbowF';
+    else if (part.startsWith('foot')) nearKey = part === 'footB' ? 'kneeB' : 'kneeF';
+    else if (part.startsWith('elbow')) nearKey = part === 'elbowB' ? 'shoulderB' : 'shoulderF';
+    else if (part.startsWith('knee')) nearKey = part === 'kneeB' ? 'hipB' : 'hipF';
+
+    if (nearKey) {
+      const near = aw[nearKey];
+      // 拳脚：判定体只取「近端→末端」的后半段，避免整条手臂都算命中（贴脸时太op）
+      const mid: Pt = { x: (near.x + hand.x) / 2, y: (near.y + hand.y) / 2, z: (near.z + hand.z) / 2 };
+      return { p1: mid, p2: hand, radius: radiusPx || baseRadius };
+    }
+
+    // 兜底：退化成以手为中心的小球
+    return { p1: hand, p2: { ...hand }, radius: baseRadius };
+  };
+
+  /**
+   * 从 Fighter 构建受击盒（Hurtbox）
+   *
+   * 升级自旧版 pelvis→head 单线段：
+   *   - 现在是真正的胶囊体（线段 + radius）
+   *   - radius 按 scale 缩放，反映角色体型
+   *   - 未来可扩展为多胶囊组合（头/躯干/腿分开）
+   */
+  const buildHurtbox = (f: Fighter): Hurtbox => {
+    const tw = place(f).world;
+    // 躯干厚度：scale=1 时约 9px（比旧 threshold 的 ~7*reach*scale 更直观）
+    const radius = 7 + f.scale * 3;
+    return { p1: tw.pelvis, p2: tw.head, radius };
+  };
+
+  /** 受击部位标签：命中哪个框就播哪个部位的反应，不再靠坐标阈值猜 */
+  type HurtZone = 'head' | 'body' | 'leg';
+
+  /** 一个带部位标签的受击框 */
+  interface HurtPart {
+    vol: HitVolume;
+    zone: HurtZone;
+  }
+
+  /**
+   * 构建多部位受击框：头（球）+ 躯干（胶囊）+ 腿（胶囊）
+   *
+   * 这是「人有身体」的落地：不再是骨盆一个点，
+   * 打中哪个框就返回哪个部位，受击反应按部位分派，几何上自洽。
+   */
+  const buildHurtParts = (f: Fighter): HurtPart[] => {
+    const tw = place(f).world;
+    const s = f.scale;
+    // 半径随体型缩放，数值来自骨骼比例（L.headR / 躯干宽度 / 大腿）
+    const headR = 5.2 + s * 2.2;
+    const torsoR = 7 + s * 3;
+    const legR = 5.6 + s * 2.4;
+
+    // 头：以 head 关节为中心的球（p1==p2）
+    const head: HitVolume = { p1: tw.head, p2: { ...tw.head }, radius: headR };
+    // 躯干：pelvis → chest 的胶囊（比 pelvis→head 更贴合真实身体）
+    const torso: HitVolume = { p1: tw.pelvis, p2: tw.chest, radius: torsoR };
+    // 腿：取「更靠前」的那条腿（朝向方向上更突出的那条），髋 → 膝
+    const frontIsF = (tw.hipF.x - tw.hipB.x) * f.facing >= 0;
+    const legHip = frontIsF ? tw.hipF : tw.hipB;
+    const legKnee = frontIsF ? tw.kneeF : tw.kneeB;
+    const legs: HitVolume = { p1: legHip, p2: legKnee, radius: legR };
+
+    return [
+      { vol: head, zone: 'head' },
+      { vol: torso, zone: 'body' },
+      { vol: legs, zone: 'leg' },
+    ];
+  };
+
+  /** 在两个判定体之间线性插值（扫掠子步用） */
+  const lerpVol = (a: HitVolume, b: HitVolume, t: number): HitVolume => ({
+    p1: {
+      x: a.p1.x + (b.p1.x - a.p1.x) * t,
+      y: a.p1.y + (b.p1.y - a.p1.y) * t,
+      z: a.p1.z + (b.p1.z - a.p1.z) * t,
+    },
+    p2: {
+      x: a.p2.x + (b.p2.x - a.p2.x) * t,
+      y: a.p2.y + (b.p2.y - a.p2.y) * t,
+      z: a.p2.z + (b.p2.z - a.p2.z) * t,
+    },
+    radius: a.radius + (b.radius - a.radius) * t,
+  });
+
+  /** 扫掠命中结果（带部位） */
+  interface SweptPartResult {
+    hit: boolean;
+    point: Pt;
+    penetration: number;
+    zone: HurtZone;
+    /** 命中的是哪个受击框（调试用） */
+    subStep: number;
+  }
+
+  /**
+   * 「面撞面」的核心判定：攻击体扫掠 × 多部位受击框
+   *
+   * 与旧 contactCheck 的根本区别：
+   *   - 旧：枪尖一个点 vs 躯干中心点，算距离 < 魔法阈值
+   *   - 新：有粗度的武器胶囊 vs 有体积的身体框，算几何重叠量
+   *
+   * 扫掠：把 prev 和 curr 两个胶囊按子步插值（1/4..4/4），
+   * 任何一个子步叠上了就算命中 —— 高速挥击不会再「跳过」身体。
+   *
+   * @returns penetration > 0 即命中；越大表示打得越实
+   */
+  const sweptHitParts = (
+    prevVol: HitVolume | null,
+    currVol: HitVolume,
+    parts: HurtPart[],
+  ): SweptPartResult => {
+    // 位移量决定子步数：移动越远，插值越密（最多 8 步，足够覆盖 60fps 下的挥击）
+    let moveDist = 0;
+    if (prevVol) {
+      moveDist = Math.hypot(currVol.p2.x - prevVol.p2.x, currVol.p2.y - prevVol.p2.y);
+    }
+    const steps = Math.max(1, Math.min(8, Math.ceil(moveDist / 4)));
+
+    let best: SweptPartResult = {
+      hit: false,
+      point: currVol.p2,
+      penetration: -Infinity,
+      zone: 'body',
+      subStep: 0,
+    };
+
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const vol = prevVol && s < steps ? lerpVol(prevVol, currVol, t) : currVol;
+      // 同一子步内三个部位都测，取「叠得最深」的那个：
+      // 戳胸口就判 body、砸到脚就判 leg、顶到下巴才判 head —— 几何说了算，不靠检测顺序。
+      for (const p of parts) {
+        const r = capsuleVsCapsule(vol, p.vol);
+        if (r.penetration > best.penetration) {
+          best = { hit: false, point: r.point, penetration: r.penetration, zone: p.zone, subStep: s };
+        }
+      }
+      if (best.penetration > 0) {
+        // 这一子步已经叠上了：返回最早接触 + 最深部位
+        return { hit: true, point: best.point, penetration: best.penetration, zone: best.zone, subStep: s };
+      }
+    }
+    return best;
+  };
+
+  /**
+   * 扫描命中检测（Swept Hit Detection）—— 旧接口保留（单受击框）
+   * 新代码请用 sweptHitParts（多部位）
+   */
+  const sweptHit = (
+    prevVol: HitVolume | null,
+    currVol: HitVolume,
+    hurtbox: Hurtbox,
+  ): SweptHitResult => {
+    const r = sweptHitParts(prevVol, currVol, [{ vol: hurtbox as unknown as HitVolume, zone: 'body' }]);
+    return { hit: r.hit, point: r.point, penetration: r.penetration, when: r.subStep >= 1 ? 'curr' : 'curr' };
+  };
+
+  /* ============================================================
    * 统一距离计算模块
    * ------------------------------------------------------------
    * 问题：原来有三套互不兼容的距离尺度：
@@ -3262,27 +3654,17 @@ export function initFightBand(opts: FightOptions = {}): void {
     return rand(lo, hi);
   };
 
-  const contactCheck = (attacker: Fighter, target: Fighter, reachMul: number, part: StrikePart, tipLen = 0): { hit: boolean; at: Pt } => {
-    const tw = place(target).world;
-    const fist = attackPoint(attacker, part, tipLen);
-    const fistReach = reachMul;
-    // 目标躯干当成一条线段（骨盆↔胸腔），算拳头到它的距离
-    // 受击盒：骨盆 → 头（含躯干和头，打头/上勾拳都算命中）
-    const a = tw.pelvis;
-    const b = tw.head;
-    const vx = b.x - a.x;
-    const vy = b.y - a.y;
-    const len2 = vx * vx + vy * vy || 1;
-    let t = ((fist.x - a.x) * vx + (fist.y - a.y) * vy) / len2;
-    t = Math.max(0, Math.min(1, t));
-    const cx = a.x + vx * t;
-    const cy = a.y + vy * t;
-    const d = Math.hypot(fist.x - cx, fist.y - cy);
-    // 命中容差：使用统一距离系统（DistanceType.CONTACT → coeff=7）
-    // reach 通常在 0.8~1.2，scale≈1.15，所以实际容差约 6.4~9.7px，接近一个拳头的宽度
-    const threshold = computeDistance(d, DistanceType.CONTACT, fistReach, target.scale);
-    return { hit: d <= threshold, at: { x: cx, y: cy } };
-  };
+  /*
+   * 【已废弃】contactCheck —— 旧的「点对点距离 + 魔法阈值」判定，已删除。
+   *
+   * 为什么删掉：它把「枪有没有捅进身体」简化成「枪尖一个点离骨盆一个点多远」，
+   * 容差还是 7*reach*scale 这种拍出来的数，导致：
+   *   · 差 0.07px 就判不中（边界极其脆弱）
+   *   · 高速挥击会「跳过」对手（无扫掠）
+   *   · 长兵器从身体里穿过去也无法识别
+   * 现在的判定是 sweptHitParts()：有粗度的攻击胶囊（扫掠子步）
+   * ∩ 头/躯干/腿三个受击框，重叠量 > 0 即命中。阈值不再存在。
+   */
 
   /* ---------- 状态切换（HFSM 分层状态机） ---------- */
 
@@ -3336,6 +3718,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     f.hitDone = [];
     f.landedHit = false;
     f.pendingCombo = null;
+    // 前冲位移的基准点：每次换招（clipT 归零）都重锚，保证 f.x 是帧的纯函数
+    f.atkStartX = f.x;
+    // 判定体缓存清空：换招后不能拿上一招的体积做扫掠
+    f.hitVols = [];
+    f.hitPrevVols = [];
+    f.advanceFrozen = false;
 
     // 通过 FSM 引擎派发事件（异步 fire-and-forget）
     // FSM 层负责跟踪嵌套状态层级，状态副作用已同步完成
@@ -3864,7 +4252,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   }
 
   const DEMO_LIST: DemoEntry[] = [
-    { key: 'thrust', name: '⑳ 突刺 Thrust（长枪直取）', kind: 'attack', gap: 96 },
+    { key: 'thrust', name: '⑳ 突刺 Thrust（长枪直取）', kind: 'attack', gap: 86 },
     { key: 'smash', name: '㉑ 抡砸 Smash（大锤下劈）', kind: 'attack', gap: 56 },
     { key: 'bash', name: '㉒ 盾击 Bash（盾面推撞）', kind: 'attack', gap: 48 },
     { key: 'slash', name: '㉓ 连斩 Slash（双刃两段）', kind: 'attack', gap: 50 },
@@ -3908,6 +4296,12 @@ export function initFightBand(opts: FightOptions = {}): void {
   let demoTimer = 0;
   let demoPaused = false;
   let demoSlow = false;
+  /**
+   * 自动轮播开关。
+   * - true：播完一招自动切下一招（首次进入时的"巡演"模式）
+   * - false：锁定当前招式，反复只播这一招（用户点了某一招之后就该是这样）
+   */
+  let demoAuto = true;
 
   const demoDur = (e: DemoEntry) => {
     if (e.kind === 'attack') return (CLIPS[e.key]?.dur ?? 0.6) + 0.65;
@@ -3921,6 +4315,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     const n = DEMO_LIST.length;
     demoIdx = ((i % n) + n) % n;
     demoTimer = 0;
+    // 换招时清掉上一招的判定读数，避免读数条显示过期数据误导调参
+    debugGeo = null;
+    debugHitPoint = null;
+    debugDemo = '';
     const e = DEMO_LIST[demoIdx];
     const a = fighters[0];
     const d = fighters[1];
@@ -3951,20 +4349,71 @@ export function initFightBand(opts: FightOptions = {}): void {
     d.clipDur = CLIPS.idle.dur;
 
     if (e.kind === 'attack') {
-      setState(a, e.key as State);
       const atk0 = ATTACKS[e.key];
       const h0 = atk0?.hits[0];
       if (atk0 && h0 && !atk0.projectile) {
-        // 自动把目标摆到「命中帧攻击点」：每招/每英雄都算，不再手调距离
+        /*
+         * DEMO 定位：反推起手位置，不是预估攻击点
+         * ------------------------------------------------------------
+         * 旧做法：先算「命中帧攻击点」，再把目标放到攻击点旁边。
+         *   但预估用的姿态/位移和运行时不一致 → 要么隔空，要么穿模。
+         * 新做法：目标位置固定，倒推出招者的起手 x ——
+         *   因为前冲已是 prog 的纯函数，命中帧位置完全可预测，
+         *   所以「几何上一定重叠」可以精确算出来，一个 offset 参数都不需要。
+         */
         const clip0 = CLIPS[e.key] ?? CLIPS.idle;
-        const savedX = a.x;
         const savedPose = a.pose;
-        a.x = a.x + a.facing * (atk0.forward ?? 0) * h0.at * clip0.dur;
+        const savedX = a.x;
+
+        // ① 目标固定在画面右侧的「受击位」
+        const targetX = Math.max(a.minX + 30, Math.min(a.maxX - 30, cx + 96));
+        d.x = targetX;
+
+        // ② 让出招者摆出「命中帧姿态」，临时挪到原点量出武器几何的相对位置
+        a.x = 0;
         a.pose = sampleClip(clip0, h0.at);
-        const ap = attackPoint(a, h0.part ?? atk0.part, h0.tip ?? 0);
+        const relVol = buildHitVolume(a, h0.part ?? atk0.part, h0.tip ?? 0, (h0.w ?? 0) * a.scale);
         a.x = savedX;
         a.pose = savedPose;
-        d.x = ap.x + 7 * d.scale; // 7px：进入所有招的命中阈值(9~11px)内，又贴住躯干表面
+
+        // ③ 命中帧相对起手点的前冲量（与运行时同一公式，含 0.62 封顶）
+        const fwdAtHit = (atk0.forward ?? 0) * clip0.dur * Math.min(h0.at, 0.62);
+
+        // ④ 反推：先按躯干半径给一个解析初值，再用「真实几何」做线性修正。
+        //    修正过程直接调 buildHurtParts + capsuleVsCapsule（和运行时同一套代码），
+        //    所以不依赖任何半径假设，任何体型/任何姿态都能精确定位。
+        const torsoR = 7 + d.scale * 3;
+        const overlapPx = 6;
+        const extreme = a.facing > 0
+          ? Math.max(relVol.p1.x, relVol.p2.x)
+          : Math.min(relVol.p1.x, relVol.p2.x);
+        const startX0 = targetX - a.facing * fwdAtHit - extreme - a.facing * (torsoR - overlapPx);
+
+        const axHit0 = startX0 + a.facing * fwdAtHit;
+        const volAt = (px: number): HitVolume => ({
+          p1: { x: relVol.p1.x + px, y: relVol.p1.y, z: relVol.p1.z },
+          p2: { x: relVol.p2.x + px, y: relVol.p2.y, z: relVol.p2.z },
+          radius: relVol.radius,
+        });
+        const partsNow = buildHurtParts(d);
+        let bestOff = 0;
+        let bestPen = -Infinity;
+        for (let k = 0; k <= 200; k++) {
+          const off = k * 0.5; // 沿朝向最多挪 100px
+          const v = volAt(axHit0 + a.facing * off);
+          let pen = -Infinity;
+          for (const p of partsNow) pen = Math.max(pen, capsuleVsCapsule(v, p.vol).penetration);
+          if (pen > bestPen) { bestPen = pen; bestOff = off; }
+          if (pen >= 5) break; // 压进身体 5px 就够，再往里就变穿模
+        }
+        a.x = Math.max(a.minX, Math.min(a.maxX, startX0 + a.facing * bestOff));
+
+        if (debugOptions.frames) {
+          debugDemo =
+            `demo ${e.key} tgt=${targetX.toFixed(0)} ext=${extreme.toFixed(0)} ` +
+            `s0=${startX0.toFixed(0)} off=${bestOff.toFixed(1)} pen=${bestPen.toFixed(1)} ax=${a.x.toFixed(0)}`;
+          console.log(`[DEMO] ${debugDemo}`);
+        }
       }
       setState(a, e.key as State);
     } else if (e.kind === 'react') {
@@ -3979,6 +4428,10 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   const update = (dt: number) => {
     elapsed += dt;
+    if (debugHitPoint) {
+      debugHitPoint.life -= dt;
+      if (debugHitPoint.life <= 0) debugHitPoint = null;
+    }
 
     // ── 帧步进控制：暂停时跳过物理/状态更新 ──
     if (debugOptions.frameStep && frameStepCtrl.paused) {
@@ -4107,12 +4560,15 @@ export function initFightBand(opts: FightOptions = {}): void {
       return;
     }
 
-    // 演示模式：自动切到下一个招式，并保持防守方不死
+    // 演示模式：按需切换 / 循环当前招式，并保持防守方不死
     if (opts.demo) {
       demoTimer += dt * (demoSlow ? 0.35 : 1);
       const dd = fighters[1];
       if (dd && dd.state !== 'down' && dd.state !== 'getup') dd.hp = dd.maxHp;
-      if (!demoPaused && demoTimer > demoDur(DEMO_LIST[demoIdx])) startDemoEntry(demoIdx + 1);
+      if (!demoPaused && demoTimer > demoDur(DEMO_LIST[demoIdx])) {
+        // demoAuto=false（用户点了某一招）= 只反复播这一招，不往后跳
+        startDemoEntry(demoAuto ? demoIdx + 1 : demoIdx);
+      }
     }
 
     for (const f of fighters) {
@@ -4261,7 +4717,9 @@ export function initFightBand(opts: FightOptions = {}): void {
       const clip = (f.state === 'idle' && f.hp < 30 ? CLIPS.tired : CLIPS[f.state]) ?? CLIPS.idle; // 残血弯腰喘
       const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
       const targetPose = sampleClip(clip, prog);
-      f.pose = lerpPose(f.pose, targetPose, 1 - Math.exp(-dt * 30));
+      // 演示模式用更高的收敛率：让运行时姿态尽快贴到采样姿态，
+      // 这样 DEMO 的反推定位（按 sampleClip 精确算的）和实际运行一致，不会因平滑滞后而判不中。
+      f.pose = lerpPose(f.pose, targetPose, 1 - Math.exp(-dt * (opts.demo ? 60 : 30)));
 
       /* --- PD 控制器：程序化受击反应叠加（可选增强） --- */
       // 如果角色启用了 PD 控制器且当前激活，将 PD 修正量混合到姿态上
@@ -4270,28 +4728,60 @@ export function initFightBand(opts: FightOptions = {}): void {
         f.pose = updatePDReaction(f.pdController, f.pose, dt);
       }
 
-      /* --- 攻击命中判定（真·空间碰撞，支持多段打击） --- */
+      /* --- 攻击命中判定（几何扫掠：攻击体体积 ∩ 身体框体积） --- */
       const atk = ATTACKS[f.state];
       if (atk) {
-        // 出招期间的前冲（飞踢、双飞脚等会真的扑过来）
-        if (atk.forward && prog < 0.62) {
-          f.x += f.facing * atk.forward * dt;
+        /*
+         * 前冲位移：改成「帧的纯函数」
+         * ------------------------------------------------------------
+         * 旧写法 f.x += forward*dt 每帧累加，看起来一样，但位置依赖 dt 序列，
+         * DEMO 预估值和运行值必然漂移 → 这就是"隔空击打 / 穿模"的根源。
+         * 现在只推进「本帧应得的增量」：
+         *   增量 = forward*dur*(ramp(prog) - ramp(prog - dt/dur))
+         * 累加后总量恰好 = forward*dur*ramp(prog)，与帧率无关；
+         * 同时保留击退/腾空等外部位移叠加的可能（不会被覆盖）。
+         */
+        if (atk.forward && f.clipDur > 0 && !f.advanceFrozen) {
+          const ramp = (x: number) => Math.min(Math.max(x, 0), 0.62);
+          const cur = ramp(prog);
+          const prev = ramp(prog - dt / f.clipDur);
+          f.x += f.facing * atk.forward * f.clipDur * (cur - prev);
           f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
         }
+
+        // 每帧把攻击体几何缓存下来（判定层只认这份几何，不读骨骼实时位置）
         for (let hi = 0; hi < atk.hits.length; hi++) {
           const h = atk.hits[hi];
-          if (f.hitDone[hi] || prog < h.at) continue;
-          f.hitDone[hi] = true;
+          f.hitPrevVols[hi] = f.hitVols[hi] ?? null;
+          f.hitVols[hi] = buildHitVolume(f, h.part ?? atk.part, h.tip ?? 0, (h.w ?? 0) * f.scale);
+        }
+
+        for (let hi = 0; hi < atk.hits.length; hi++) {
+          const h = atk.hits[hi];
+          if (f.hitDone[hi]) continue;
+          if (prog < h.at) continue;
+
+          // ── 判定窗口：[h.at, h.at + act] ──
+          // 不是"恰好那一帧"，而是整段窗口内武器扫过就在判。
+          // 窗口结束还没叠上 = 真挥空，才标记 hitDone。
+          const actSpan = h.act ?? 0.14;
+          if (prog > h.at + actSpan) {
+            f.hitDone[hi] = true;
+            continue;
+          }
           if (!opp || opp.state === 'down') continue;
+
           // 对方在闪避无敌帧内 -> 打空
           if (opp.invuln > 0) {
+            f.hitDone[hi] = true;
             spawn(opp.x - f.facing * 8, groundY() - 36, 'rgba(120,200,255,0.75)', 'dust', 5, 0.55);
             continue;
           }
 
           // 弹道招式：不做接触判定，发射投射物（弩箭/飞镖），朝对手胸口做一次方向修正
-          f.landedHit = true; // 箭已出手，不按挥空惩罚（中不中看投射物碰撞）
           if (atk.projectile) {
+            f.hitDone[hi] = true;
+            f.landedHit = true; // 箭已出手，不按挥空惩罚（中不中看投射物碰撞）
             const aw = place(f).world;
             const src = aw[atk.part as keyof Joints];
             const tw = opp ? place(opp).world : null;
@@ -4309,12 +4799,47 @@ export function initFightBand(opts: FightOptions = {}): void {
             continue;
           }
 
-          const { hit, at } = contactCheck(f, opp, h.reach, h.part ?? atk.part, h.tip ?? 0);
-          if (!hit) {
-            // 够不着 = 挥空
-            spawn(at.x + f.facing * 12, at.y, 'rgba(120,120,120,0.45)', 'dust', 3, 0.4);
+          // ── 核心判定：武器胶囊（含扫掠子步） vs 头/躯干/腿三个身体框 ──
+          const hurtParts = buildHurtParts(opp);
+          const swept = sweptHitParts(f.hitPrevVols[hi] ?? null, f.hitVols[hi], hurtParts);
+          const at = swept.point;
+
+          if (debugOptions.frames) {
+            const cv0 = f.hitVols[hi];
+            const tw0 = place(opp).world;
+            const per = hurtParts
+              .map((p) => `${p.zone[0]}:${capsuleVsCapsule(cv0, p.vol).penetration.toFixed(0)}`)
+              .join(' ');
+            debugGeo = {
+              move: f.state,
+              prog,
+              pen: swept.penetration,
+              hit: swept.hit,
+              zone: swept.zone,
+              r: cv0?.radius ?? 0,
+              v1: cv0?.p1.x ?? 0,
+              v2: cv0?.p2.x ?? 0,
+              tx: opp.x,
+              ax: f.x,
+              parts: `y${cv0.p1.y.toFixed(0)}-${cv0.p2.y.toFixed(0)} ${per.replace(/ /g, '')} T${tw0.pelvis.x.toFixed(0)},${tw0.head.y.toFixed(0)}/${tw0.chest.y.toFixed(0)}/${tw0.pelvis.y.toFixed(0)}`,
+            };
+            console.log(
+              `[GEO] ${f.state} h${hi} prog=${prog.toFixed(3)} ax=${f.x.toFixed(1)} opp=${opp.x.toFixed(1)} ` +
+              `vol=(${cv0.p1.x.toFixed(1)},${cv0.p1.y.toFixed(1)})→(${cv0.p2.x.toFixed(1)},${cv0.p2.y.toFixed(1)}) r=${cv0.radius.toFixed(1)} ` +
+              `pen=${swept.penetration.toFixed(2)} zone=${swept.zone} hit=${swept.hit} | ${per}`,
+            );
+          }
+
+          if (!swept.hit) {
+            // 窗口内还没叠上：武器还在扫，等下一帧继续判（不消耗这次 hit）
             continue;
           }
+
+          // 真的叠上了：这次 hit 用掉
+          f.hitDone[hi] = true;
+          // 武器顶到人了 → 停止前冲，避免长兵器继续推进从身体里穿过去
+          f.advanceFrozen = true;
+          debugHitPoint = { x: at.x, y: at.y, pen: swept.penetration, life: 1.2, zone: swept.zone };
 
           // 架势值系统：格挡要付出代价，撑不住就破防（破防中无法格挡且挨打更疼）
           f.landedHit = true; // 打到人了（含被格挡），不算挥空
@@ -4327,9 +4852,8 @@ export function initFightBand(opts: FightOptions = {}): void {
           const isCounter = !!oppPhHit && !guarding && oppProgHit < oppPhHit.first;
           // 对拼 trade：对手这招也已经过了命中帧 = 互换，不改数值只给演出
           const isTrade = !!oppPhHit && !guarding && !isCounter;
-          // 部位受击：按命中点在对手躯干上的高度分头/身/腿三段
-          const oppWorld = place(opp).world;
-          const zone = at.y < oppWorld.chest.y - 4 ? 'head' : at.y > oppWorld.pelvis.y + 3 ? 'leg' : 'body';
+          // 部位受击：几何说了算 —— 命中哪个身体框就是哪个部位，不再按 y 阈值猜
+          const zone = swept.zone;
           const zoneMul = zone === 'head' ? 1.15 : zone === 'leg' ? 0.85 : 1;
           const mul = (guarding ? (meta0?.breakGuard ? 0.62 : 0.34) : broken ? 1.6 : 1) * (isCounter ? 1.35 : 1) * zoneMul;
           const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * mul);
@@ -6375,6 +6899,93 @@ export function initFightBand(opts: FightOptions = {}): void {
           }
         }
 
+        // ── 2.5 判定几何可视化（几何判定的真凭实据）──
+        // 绿 = 受击框（头/躯干/腿）  红 = 攻击判定体（带粗细）
+        // 黄虚线 = 上一帧攻击体（扫掠前位置）  白点 = 实际命中点 + 重叠量
+        // 用法：?debug=frames 或 ?debug=hitboxes
+        if (debugOptions.frames || debugOptions.hitboxes) {
+          const drawVol = (vol: HitVolume, color: string, dash: number[] = []) => {
+            ctx.save();
+            ctx.setLineDash(dash);
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(1.5, vol.radius * 2);
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(vol.p1.x, vol.p1.y);
+            ctx.lineTo(vol.p2.x, vol.p2.y);
+            ctx.stroke();
+            // 中轴线：看得出体积的走向（枪是斜的、锤是竖的）
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+            ctx.beginPath();
+            ctx.moveTo(vol.p1.x, vol.p1.y);
+            ctx.lineTo(vol.p2.x, vol.p2.y);
+            ctx.stroke();
+            ctx.restore();
+          };
+
+          // 受击框：任何状态都画（始终存在，这是「人有身体」）
+          for (const hp of buildHurtParts(f)) {
+            const col =
+              hp.zone === 'head' ? 'rgba(120,230,140,0.34)' :
+              hp.zone === 'leg' ? 'rgba(120,190,255,0.30)' :
+              'rgba(110,220,150,0.26)';
+            drawVol(hp.vol, col);
+          }
+
+          // 攻击判定体：仅在本角色处于攻击状态时存在
+          const atkD = ATTACKS[f.state];
+          if (atkD) {
+            for (let vi = 0; vi < f.hitVols.length; vi++) {
+              const pv = f.hitPrevVols[vi];
+              if (pv) drawVol(pv, 'rgba(255,214,90,0.45)', [4, 4]);
+              const cv = f.hitVols[vi];
+              if (cv) drawVol(cv, 'rgba(255,70,60,0.42)');
+            }
+          }
+
+          // 顶部读数条：逐招微调时先看这两行
+          // 行1 = 招式/进度/判定体粗细   行2 = 判定体世界端点 → 目标中心 / 重叠量
+          if (debugGeo && fighters.indexOf(f) === 0) {
+            const g = debugGeo;
+            ctx.save();
+            ctx.font = 'bold 11px ui-monospace, monospace';
+            ctx.fillStyle = g.hit ? 'rgba(28,132,66,0.92)' : 'rgba(150,60,40,0.88)';
+            ctx.fillRect(6, 6, Math.min(W - 12, 330), 59);
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`${g.move} ${(g.prog * 100).toFixed(0)}%  r=${g.r.toFixed(1)}  ax=${g.ax.toFixed(0)}`, 12, 8);
+            ctx.fillText(
+              `vol ${g.v1.toFixed(0)}→${g.v2.toFixed(0)}  tgt ${g.tx.toFixed(0)}  pen=${g.pen.toFixed(2)} ${g.hit ? 'HIT ' + g.zone : 'MISS'}`,
+              12,
+              21,
+            );
+            ctx.fillText(g.parts, 12, 34);
+            if (debugDemo) ctx.fillText(debugDemo, 12, 47);
+            ctx.restore();
+          }
+
+          // 命中点：白点 + 重叠量
+          if (debugHitPoint) {
+            const dp = debugHitPoint;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(dp.x, dp.y, 4.5, 0, TAU);
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(20,16,12,0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.font = 'bold 10px ui-monospace, monospace';
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.textAlign = 'center';
+            ctx.fillText(`∩${dp.pen.toFixed(1)}px`, dp.x, dp.y - 9);
+            ctx.restore();
+          }
+        }
+
         // ── 3. 6色命中盒系统（hitboxes 或 full 模式）──
         if (debugOptions.hitboxes) {
           const boxes = computeDebugHitboxes(f, joints);
@@ -6574,9 +7185,11 @@ export function initFightBand(opts: FightOptions = {}): void {
   if (opts.demo) {
     demoKeydownHandler = (ev: KeyboardEvent) => {
       if (ev.key === 'ArrowRight') {
+        demoAuto = false; // 手动切换 = 锁定当前招，不再自动往后跳
         startDemoEntry(demoIdx + 1);
         ev.preventDefault();
       } else if (ev.key === 'ArrowLeft') {
+        demoAuto = false;
         startDemoEntry(demoIdx - 1);
         ev.preventDefault();
       } else if (ev.key === ' ') {
@@ -6651,8 +7264,22 @@ export function initFightBand(opts: FightOptions = {}): void {
     },
     /** 演示模式控制 */
     demo: {
-      list: DEMO_LIST.map((e, i) => ({ i, key: e.key, name: e.name })),
-      go: (i: number) => startDemoEntry(i),
+      list: DEMO_LIST.map((e, i) => ({ i, key: e.key, name: e.name })),      /**
+       * 跳到某一招。
+       * 默认会关闭自动轮播 —— 用户点了某一招，就应该只反复看这一招，
+       * 而不是看完自动跳下一招（自动轮播请显式调用 auto(true)）。
+       */
+      go: (i: number, keepAuto = false) => {
+        if (!keepAuto) demoAuto = false;
+        demoPaused = false; // 手动选招时解除定格，否则画面停住不动
+        startDemoEntry(i);
+      },
+      /** 开关自动轮播（true = 播完自动下一招，false = 锁定循环当前招） */
+      auto: (v?: boolean) => {
+        demoAuto = v ?? !demoAuto;
+        if (demoAuto) demoTimer = 0;
+        return demoAuto;
+      },
       pause: (v?: boolean) => {
         demoPaused = v ?? !demoPaused;
         return demoPaused;
@@ -6670,6 +7297,18 @@ export function initFightBand(opts: FightOptions = {}): void {
         const t = Math.max(0, Math.min(0.999, frac));
         a.clipT = clip.dur * t;
         a.pose = sampleClip(clip, t);
+        // 位置也按同一套确定性公式重算，否则定格帧的站位和实跑不一致（截图会骗人）
+        const atk = ATTACKS[a.state];
+        if (atk?.forward) {
+          a.x = a.atkStartX + a.facing * atk.forward * clip.dur * Math.min(t, 0.62);
+          a.x = Math.max(a.minX, Math.min(a.maxX, a.x));
+        }
+        // 判定体按定格姿态重建，让 ?debug=frames 的红/绿框反映这一帧真实几何
+        a.hitPrevVols = [];
+        a.hitVols = atk
+          ? atk.hits.map((h) => buildHitVolume(a, h.part ?? atk.part, h.tip ?? 0, (h.w ?? 0) * a.scale))
+          : [];
+        a.hitDone = [];
       },
       /** 切换演示位角色（ROSTER 索引），用于逐个检查剪影与动态件 */
       who: (i: number) => {
@@ -6707,6 +7346,31 @@ export function initFightBand(opts: FightOptions = {}): void {
       },
       get slowOn() {
         return demoSlow;
+      },
+      get autoOn() {
+        return demoAuto;
+      },
+      /** 判定几何（红/绿胶囊）显示快照 */
+      get geoOn() {
+        return !!(debugOptions.frames || debugOptions.hitboxes);
+      },
+      /**
+       * 运行时开关调试overlay —— 不用再往 URL 上拼 ?debug=frames。
+       * 命中几何（红胶囊/绿受击框/黄扫掠/白命中点）在 debugOptions.frames 打开时实时绘制，
+       * 这个对象每帧被渲染层读取，所以赋值立即生效。
+       */
+      debug: (patch?: { frames?: boolean; hitboxes?: boolean; bones?: boolean; hud?: boolean }) => {
+        if (patch) Object.assign(debugOptions, patch);
+        return {
+          frames: !!debugOptions.frames,
+          hitboxes: !!debugOptions.hitboxes,
+          bones: !!debugOptions.bones,
+        };
+      },
+      /** 一键开关「判定几何」 */
+      toggleGeo: (v?: boolean) => {
+        debugOptions.frames = v ?? !debugOptions.frames;
+        return !!debugOptions.frames;
       },
     },
   };

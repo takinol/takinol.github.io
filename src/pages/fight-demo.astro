@@ -21,7 +21,9 @@ import Base from '../layouts/Base.astro';
       <button id="demo-next" type="button">下一个 →</button>
       <button id="demo-pause" type="button">⏸ 暂停</button>
       <button id="demo-slow" type="button">🐢 慢放</button>
-      <span class="demo-keys">快捷键：← → 切换 · 空格 暂停 · S 慢放</span>
+      <button id="demo-auto" type="button">🔁 自动轮播：关</button>
+      <button id="demo-geo" type="button">🎯 判定盒：关</button>
+      <span class="demo-keys">快捷键：← → 切换 · 空格 暂停 · S 慢放 · A 轮播 · G 判定盒</span>
     </div>
 
     <ol class="demo-list" id="demo-list"></ol>
@@ -159,6 +161,8 @@ import Base from '../layouts/Base.astro';
     const listEl = document.getElementById('demo-list');
     const pauseBtn = document.getElementById('demo-pause') as HTMLButtonElement | null;
     const slowBtn = document.getElementById('demo-slow') as HTMLButtonElement | null;
+    const autoBtn = document.getElementById('demo-auto') as HTMLButtonElement | null;
+    const geoBtn = document.getElementById('demo-geo') as HTMLButtonElement | null;
 
     // 角色切换：同步 15 人 roster，切换后用当前招式重新演示
     const whoSel = document.getElementById('demo-who') as HTMLSelectElement | null;
@@ -208,6 +212,15 @@ import Base from '../layouts/Base.astro';
         slowBtn.textContent = d.slowOn ? '🐇 恢复速度' : '🐢 慢放';
         slowBtn.classList.toggle('on', !!d.slowOn);
       }
+      if (autoBtn) {
+        autoBtn.textContent = d.autoOn ? '🔁 自动轮播：开' : '🔁 自动轮播：关';
+        autoBtn.classList.toggle('on', !!d.autoOn);
+      }
+      if (geoBtn) {
+        const on = !!d.geoOn;
+        geoBtn.textContent = on ? '🎯 判定盒：开' : '🎯 判定盒：关';
+        geoBtn.classList.toggle('on', on);
+      }
     };
     setInterval(sync, 120);
     sync();
@@ -227,6 +240,25 @@ import Base from '../layouts/Base.astro';
     slowBtn?.addEventListener('click', () => {
       api()?.slow();
       sync();
+    });
+    // 自动轮播开关：关 = 只循环当前这一招（点招式后的默认状态）
+    autoBtn?.addEventListener('click', () => {
+      api()?.auto();
+      sync();
+    });
+    // 判定盒（红胶囊/绿受击框）开关：等价于 URL 上加 ?debug=frames
+    geoBtn?.addEventListener('click', () => {
+      api()?.toggleGeo();
+      sync();
+    });
+    window.addEventListener('keydown', (ev) => {
+      if (ev.key === 'a' || ev.key === 'A') {
+        api()?.auto();
+        sync();
+      } else if (ev.key === 'g' || ev.key === 'G') {
+        api()?.toggleGeo();
+        sync();
+      }
     });
   </script>
 </Base>

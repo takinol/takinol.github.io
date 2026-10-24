@@ -2006,3 +2006,47 @@ html:not([data-theme="dark"]) .icon-sun {
     margin: 20px 0 8px;
   }
 }
+/* ============================================================
+   格斗工具子导航（竞技场 / 招式演示 / 逐帧检查 / 角色图鉴）
+   这几个页面是同一个调试工具的不同视图，统一给一条切换条
+   ============================================================ */
+.fight-tools {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.fight-tools-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+.fight-tools-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+.fight-tool {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.fight-tool:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.fight-tool.cur {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}

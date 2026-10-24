@@ -28,12 +28,41 @@
         width: 100vw;
         height: 100vh;
       }
+      /* 独立打开（非图鉴 iframe）时给一条回到工具的出口，避免变成死胡同 */
+      #pose-back {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        z-index: 9;
+        display: none;
+        gap: 6px;
+        align-items: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(6px);
+        color: #1c1c20;
+        font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        text-decoration: none;
+      }
+      #pose-back:hover {
+        border-color: #1a5fb4;
+        color: #1a5fb4;
+      }
     </style>
   </head>
   <body>
     <canvas id="pose-canvas"></canvas>
+    <a id="pose-back" href="/fight-demo">← 招式演示</a>
     <script>
       import { initFightBand } from '../scripts/fight';
+
+      // 只在「独立打开」时显示返回入口；被 /roster 的 iframe 嵌入时保持纯画布
+      if (window.self === window.top) {
+        const back = document.getElementById('pose-back') as HTMLElement | null;
+        if (back) back.style.display = 'inline-flex';
+      }
 
       const qs = new URLSearchParams(location.search);
       // noHud=1：隐藏 canvas 顶部的招式标题条（角色图鉴等嵌入场景用）

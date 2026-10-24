@@ -21,6 +21,8 @@ export const site = {
 // 导航菜单
 export const nav = [
   { label: 'Blog', href: '/blog' },
+  { label: '竞技场', href: '/arena' },
+  { label: '招式演示', href: '/fight-demo' },
   { label: 'photo', href: '/photos' },
   { label: 'Projects', href: '/projects' },
   { label: 'Links', href: '/links' },
