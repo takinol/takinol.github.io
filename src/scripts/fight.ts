@@ -230,7 +230,7 @@ const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35,
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
 const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: 1.0, legLB: -1.6, legUBD: 0.15, legUF: -0.12, legLF: 0, legUFD: 0, yaw: 0 });
-const SPIN_MID = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.9, legLB: -0.6, legUBD: -0.2, legUF: 0.15, legLF: 0, legUFD: 0, yaw: 3.14 });
+const SPIN_MID = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: 1.0, legLB: -1.5, legUBD: 0.15, legUF: 0.1, legLF: 0, legUFD: 0, yaw: 3.14 });
 const SPIN_KICK = P({ lean: -0.12, head: 0.18, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0, legUBD: -0.25, legUF: 0.12, legLF: 0, legUFD: 0, yaw: 3.14 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0, legUBD: 0, legUF: 0.32, legLF: 0, yaw: 6.28 });
 
