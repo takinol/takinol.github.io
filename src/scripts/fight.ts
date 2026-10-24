@@ -473,6 +473,8 @@ export interface FightOptions {
   canvasId?: string;
   /** 演示模式：按顺序逐个播放招式并标注 */
   demo?: boolean;
+  /** 调试/截图用：无视口可见性门控，始终渲染 */
+  forceVisible?: boolean;
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
@@ -551,7 +553,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
     armFront: 'B' | 'F';
     /** 体型：游侠（瘦高带剑）或战士（宽厚） */
-    build: 'ranger' | 'warrior';
+    build: 'swordsman' | 'ranger';
     /** 无敌帧剩余时间（闪避用） */
     invuln: number;
     minX: number;
@@ -600,8 +602,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     walkPhase: rand(0, 1),
     partner: i % 2 === 0 ? i + 1 : i - 1,
     skin,
-    scale: (i % 2 === 0 ? rand(0.88, 0.95) : rand(1.0, 1.08)),
-    build: (i % 2 === 0 ? 'warrior' : 'ranger') as 'warrior' | 'ranger',
+    scale: (i % 2 === 0 ? rand(0.98, 1.06) : rand(0.94, 1.02)),
+    build: (i % 2 === 0 ? 'swordsman' : 'ranger') as 'swordsman' | 'ranger',
     aggression: rand(0.45, 0.95),
     guardChance: rand(0.35, 0.75),
     preferDist: rand(29, 34),
@@ -614,7 +616,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     kb: 0,
     stagger: 0,
     armFront: 'F',
-    build: 'warrior',
     invuln: 0,
     minX: 20,
     maxX: 9999,
@@ -1455,7 +1456,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     expr: 'normal' | 'hurt' | 'down',
     facing: number,
     camFace: number,
-    gear: 'ranger' | 'warrior',
+    gear: 'swordsman' | 'ranger',
     side: number,
     torsoScale: number
   ) => {
@@ -1523,8 +1524,31 @@ export function initFightBand(opts: FightOptions = {}): void {
 
     headShape(head, k, body, trim, expr, side, camFace);
 
-    // 装备：游侠背剑 + 围巾；战士肩甲
-    if (gear === 'ranger') {
+    // 装备与发型：剑客（发髻+马尾+交领袍+背剑）/ 游侠（兜帽+斗篷+围巾）
+    if (gear === 'swordsman') {
+      // 发髻（头顶小圆髻）
+      disc({ x: head.x, y: head.y - (L.headR + 1.4) * k, z: 0 }, 2.6 * k, trim);
+      // 马尾（从后脑垂下一束）
+      const hx = head.x - facing * L.headR * 0.6 * k;
+      const hy = head.y + L.headR * 0.7 * k;
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 3.4 * k;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.quadraticCurveTo(hx - facing * 1.5 * k, hy + 9 * k, hx + facing * 1.2 * k, hy + 15 * k);
+      ctx.stroke();
+      // 交领袍：胸前 V 字领
+      const chest2 = get('chest');
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 1.8 * k;
+      ctx.beginPath();
+      ctx.moveTo(head.x, head.y + L.headR * 0.65 * k);
+      ctx.lineTo(chest2.x - facing * 4 * k, chest2.y + 5 * k);
+      ctx.moveTo(head.x, head.y + L.headR * 0.65 * k);
+      ctx.lineTo(chest2.x + facing * 4 * k, chest2.y + 5 * k);
+      ctx.stroke();
+      // 背剑：剑鞘斜背身后 + 剑柄从肩上伸出 + 剑格
       const sB = get('shoulderB');
       const hB = get('hipB');
       const dxg = sB.x - hB.x;
@@ -1534,18 +1558,42 @@ export function initFightBand(opts: FightOptions = {}): void {
       const uy = dyg / lg;
       // 剑鞘
       ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = 3.4 * k;
+      ctx.lineWidth = 4.4 * k;
       ctx.beginPath();
-      ctx.moveTo(sB.x - ux * 3, sB.y - uy * 3);
+      ctx.moveTo(sB.x - ux * 2, sB.y - uy * 2);
       ctx.lineTo(hB.x + ux * 1.5, hB.y + uy * 1.5);
       ctx.stroke();
       // 剑柄
       ctx.strokeStyle = trim;
-      ctx.lineWidth = 2.2 * k;
+      ctx.lineWidth = 2.8 * k;
       ctx.beginPath();
-      ctx.moveTo(sB.x + ux * 1.5, sB.y + uy * 1.5);
-      ctx.lineTo(sB.x + ux * 9, sB.y + uy * 9);
+      ctx.moveTo(sB.x, sB.y);
+      ctx.lineTo(sB.x + ux * 7 * k, sB.y + uy * 7 * k);
       ctx.stroke();
+      // 剑格（护手横档）
+      ctx.lineWidth = 2.4 * k;
+      ctx.beginPath();
+      ctx.moveTo(sB.x + ux * 5.5 * k - uy * 3.2 * k, sB.y + uy * 5.5 * k + ux * 3.2 * k);
+      ctx.lineTo(sB.x + ux * 5.5 * k + uy * 3.2 * k, sB.y + uy * 5.5 * k - ux * 3.2 * k);
+      ctx.stroke();
+    } else {
+      // 游侠：兜帽（盖住头顶的弧形）
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 4 * k;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.ellipse(head.x, head.y - L.headR * 0.1 * k, L.headR * 1.12 * k, L.headR * 1.0 * k, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      // 斗篷（从肩向后飘）
+      const sB = get('shoulderB');
+      const hB = get('hipB');
+      ctx.fillStyle = trim;
+      ctx.beginPath();
+      ctx.moveTo(sB.x, sB.y - 2 * k);
+      ctx.quadraticCurveTo(sB.x - facing * 13 * k, sB.y + 9 * k, sB.x - facing * 5 * k, hB.y + 11 * k);
+      ctx.lineTo(sB.x + facing * 1 * k, hB.y + 5 * k);
+      ctx.closePath();
+      ctx.fill();
       // 围巾
       ctx.fillStyle = trim;
       ctx.beginPath();
@@ -1554,10 +1602,6 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.lineTo(neckA.x - facing * 2 * k, neckA.y + 6 * k);
       ctx.closePath();
       ctx.fill();
-    } else {
-      // 战士肩甲
-      jointCap(get('shoulderF'), 4.6 * k, trim);
-      jointCap(get('shoulderB'), 4.6 * k, trim);
     }
 
     drawLeg(backLegIsFarther ? 'F' : 'B', body);
@@ -1574,7 +1618,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       f.state === 'down' ? 'down' : f.state === 'hurtLight' || f.state === 'hurtHeavy' || flashing ? 'hurt' : 'normal';
 
     // 体型：战士更宽（宽度放大），游侠更瘦
-    const bulk = f.build === 'warrior' ? 1.22 : 0.84;
+    const bulk = f.build === 'swordsman' ? 1.05 : 0.86;
     const yaw = f.pose.yaw || 0;
     const faceCam = -Math.sin(yaw);
     // 脸画在哪一侧：由「身体朝向 × 头自己转的角度」共同决定
@@ -1702,7 +1746,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     const dt = Math.min(0.05, (ts - last) / 1000);
     last = ts;
     // 只有「真的被人看着」才跑：在视口内 + 标签页可见 + 没开减少动效
-    if (reduceMotion || !visible || !tabVisible) return;
+    if (reduceMotion || (!visible && !opts.forceVisible) || !tabVisible) return;
     update(dt);
     render();
   };
