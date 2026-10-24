@@ -28,13 +28,15 @@ const tagList = [...tagCount.entries()].sort(
   (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')
 );
 
-// 蒙德里安（Piet Mondrian）色系：红 / 蓝 / 黄 / 白 + 黑色分割线
-// fg 是该底色上用来看得清的文字颜色
+// 蒙德里安（Piet Mondrian，风格派 De Stijl）色卡
+// 红/蓝/黄取设计界通用的蒙德里安引用值；黑是分割线，白是画布暖白
+// （对照取样的《Composition II with Red, Blue and Yellow》1930：红 #DD2112、
+//   蓝 #0C5B94、黄 #F0D445、画布白 #E6E5DC —— 如需更“油画感”可换成这组）
 const mondrian = [
-  { bg: '#DD0100', fg: '#FFF6EF' }, // 蒙德里安红
-  { bg: '#0B4EA2', fg: '#EAF2FF' }, // 蒙德里安蓝
-  { bg: '#F5D000', fg: '#161616' }, // 蒙德里安黄
-  { bg: '#F4F1EA', fg: '#161616' }, // 暖白
+  { bg: '#DD0100', fg: '#FFF6EF' }, // 蒙德里安红 Red
+  { bg: '#225095', fg: '#EAF2FF' }, // 蒙德里安蓝 Blue
+  { bg: '#FAC901', fg: '#161616' }, // 蒙德里安黄 Yellow
+  { bg: '#F2F1EA', fg: '#161616' }, // 画布暖白 Off-white
 ];
 
 // 每个色块的“随意长度”：让矩形高低不一，拼起来更像蒙德里安的构成画
