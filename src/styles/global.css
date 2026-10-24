@@ -1801,19 +1801,68 @@ html:not([data-theme="dark"]) .icon-sun {
   opacity: 0.55;
 }
 
-/* ---------- 列表卡片：封面图 + 彩色边框 ---------- */
+/* ---------- 蒙德里安拼贴：整块填色的矩形卡片 ---------- */
+/* 两栏瀑布流：颜色整块铺满、直角、黑色粗分割线、高低大小不一 */
+.mondrian-grid {
+  column-count: 2;
+  column-gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .mondrian-grid {
+    column-count: 1;
+  }
+}
+
 .post-card {
   position: relative;
   overflow: hidden;
-  /* 彩色边框：颜色由列表页轮换赋值（--card-c，Tailwind 400 色系） */
-  border-color: var(--card-c, var(--border));
-  border-color: color-mix(in srgb, var(--card-c, var(--accent)) 55%, var(--border));
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 18px 18px 16px;
+  min-height: var(--card-h, 180px);
+  /* 纯矩形：直角 + 黑色粗边（相邻色块之间自然形成粗黑线） */
+  border: 3px solid #111;
+  border-radius: 0;
+  /* 整块填色 */
+  background: var(--card-bg, var(--bg-elevated));
+  color: var(--card-fg, var(--text));
+  /* 不要被拆到两栏 */
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
 }
 
-.post-card:hover {
-  border-color: var(--card-c, var(--accent));
-  border-color: color-mix(in srgb, var(--card-c, var(--accent)) 88%, var(--border));
-  box-shadow: 0 10px 28px -16px color-mix(in srgb, var(--card-c, var(--accent)) 65%, transparent);
+.mondrian-grid .post-card:hover {
+  transform: none;
+  filter: brightness(1.07);
+}
+
+/* 卡片内文字跟随底色自动切黑白 */
+.mondrian-grid .pc-meta {
+  color: var(--card-fg);
+  opacity: 0.72;
+}
+
+.mondrian-grid .pc-title {
+  color: var(--card-fg);
+  font-size: 20px;
+  line-height: 1.42;
+}
+
+.mondrian-grid .post-card:hover .pc-title {
+  color: var(--card-fg);
+}
+
+.mondrian-grid .pc-desc {
+  color: var(--card-fg);
+  opacity: 0.82;
+}
+
+.mondrian-grid .pc-tag {
+  color: var(--card-fg);
+  background: color-mix(in srgb, var(--card-fg) 20%, transparent);
+  border-radius: 0;
 }
 
 /* 封面照片只占卡片右侧一块；透明度由文章 frontmatter 的 coverOpacity 控制 */

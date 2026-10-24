@@ -28,17 +28,17 @@ const tagList = [...tagCount.entries()].sort(
   (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')
 );
 
-// 卡片彩色边框用的知名色系：Tailwind CSS 400 系列（浅色/深色主题下都清楚）
-const cardPalette = [
-  '#60a5fa', // blue-400
-  '#a78bfa', // violet-400
-  '#f472b6', // pink-400
-  '#fbbf24', // amber-400
-  '#34d399', // emerald-400
-  '#22d3ee', // cyan-400
-  '#fb923c', // orange-400
-  '#fb7185', // rose-400
+// 蒙德里安（Piet Mondrian）色系：红 / 蓝 / 黄 / 白 + 黑色分割线
+// fg 是该底色上用来看得清的文字颜色
+const mondrian = [
+  { bg: '#DD0100', fg: '#FFF6EF' }, // 蒙德里安红
+  { bg: '#0B4EA2', fg: '#EAF2FF' }, // 蒙德里安蓝
+  { bg: '#F5D000', fg: '#161616' }, // 蒙德里安黄
+  { bg: '#F4F1EA', fg: '#161616' }, // 暖白
 ];
+
+// 每个色块的“随意长度”：让矩形高低不一，拼起来更像蒙德里安的构成画
+const mondrianHeights = [232, 168, 204, 148, 220, 180];
 ---
 
 <Base title="Blog" description="全部文章列表">
@@ -51,43 +51,47 @@ const cardPalette = [
 
       {
         posts.length > 0 ? (
-          <div style="margin-top: 36px" id="post-list">
-            {posts.map((post, i) => (
-              <a
-                class="post-card"
-                href={`/blog/${post.id}/`}
-                data-tags={(post.data.tags ?? []).join(',')}
-                style={`--card-c:${cardPalette[i % cardPalette.length]}`}
-              >
-                {post.data.cover && (
-                  <span
-                    class="pc-cover"
-                    aria-hidden="true"
-                    style={`background-image:url('${post.data.cover}');opacity:${post.data.coverOpacity}`}
-                  />
-                )}
-                <div class="pc-meta">
-                  <span>{dateFmt.format(post.data.date)}</span>
-                  {post.data.updated && (
-                    <>
-                      <span class="pc-sep">/</span>
-                      <span>更新 {dateFmt.format(post.data.updated)}</span>
-                    </>
+          <div class="mondrian-grid" style="margin-top: 36px" id="post-list">
+            {posts.map((post, i) => {
+              const c = mondrian[i % mondrian.length];
+              const h = mondrianHeights[i % mondrianHeights.length];
+              return (
+                <a
+                  class="post-card"
+                  href={`/blog/${post.id}/`}
+                  data-tags={(post.data.tags ?? []).join(',')}
+                  style={`--card-bg:${c.bg};--card-fg:${c.fg};--card-h:${h}px`}
+                >
+                  {post.data.cover && (
+                    <span
+                      class="pc-cover"
+                      aria-hidden="true"
+                      style={`background-image:url('${post.data.cover}');opacity:${post.data.coverOpacity}`}
+                    />
                   )}
-                  <span class="pc-sep">·</span>
-                  <span>{minutesRead(post)} 分钟</span>
-                  <span class="pc-sep">·</span>
-                  <span>{post.data.language}</span>
-                </div>
-                <div class="pc-title">{post.data.title}</div>
-                {post.data.description && <p class="pc-desc">{post.data.description}</p>}
-                {post.data.tags.length > 0 && (
-                  <div class="pc-tags">
-                    {post.data.tags.map((tag) => <span class="pc-tag">{tag}</span>)}
+                  <div class="pc-meta">
+                    <span>{dateFmt.format(post.data.date)}</span>
+                    {post.data.updated && (
+                      <>
+                        <span class="pc-sep">/</span>
+                        <span>更新 {dateFmt.format(post.data.updated)}</span>
+                      </>
+                    )}
+                    <span class="pc-sep">·</span>
+                    <span>{minutesRead(post)} 分钟</span>
+                    <span class="pc-sep">·</span>
+                    <span>{post.data.language}</span>
                   </div>
-                )}
-              </a>
-            ))}
+                  <div class="pc-title">{post.data.title}</div>
+                  {post.data.description && <p class="pc-desc">{post.data.description}</p>}
+                  {post.data.tags.length > 0 && (
+                    <div class="pc-tags">
+                      {post.data.tags.map((tag) => <span class="pc-tag">{tag}</span>)}
+                    </div>
+                  )}
+                </a>
+              );
+            })}
           </div>
         ) : (
           <p style="margin-top: 40px; color: var(--text-muted)">还没有文章。</p>
