@@ -2864,7 +2864,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   }
   let rafId = 0;
   let last = 0;
-  let visible = false;
+  let visible = true; // 默认可见，IntersectionObserver 会修正；避免初始 false 导致首帧永远不更新
   let tabVisible = document.visibilityState !== 'hidden';
 
   const groundY = () => H - 14;
