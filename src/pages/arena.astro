@@ -6,7 +6,7 @@ import Base from '../layouts/Base.astro';
   <div class="container arena-page">
     <header class="page-head">
       <h1>竞技场</h1>
-      <p>设定模式：选左右角色、调参数，看他们单挑。主页是无限模式（倒地换人）。</p>
+      <p>设定模式：选左右角色、调参数，看他们单挑。普通击倒会起身；主页仅在实际阵亡后换人。</p>
     </header>
 
     <section class="arena-controls">
@@ -156,6 +156,7 @@ import Base from '../layouts/Base.astro';
       initFightBand({
         canvasId: 'arena-canvas',
         endless: false,
+        forceVisible: true, // 无头/后台标签页里 IntersectionObserver 会误判，导致引擎停住、两人干站着
         matchup: { left: Number(leftEl.value), right: Number(rightEl.value) },
         params: {
           aggression: Number(aggEl.value),

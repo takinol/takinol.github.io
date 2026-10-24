@@ -13,6 +13,8 @@
  *      默认用本地启发式 AI；只有页面真的被人看到时才跑（IntersectionObserver + 标签页可见性）
  */
 
+import { FsmProcess, FsmStateConfig, STATE_ANY, STATE_INITIAL } from '@statewalker/fsm';
+
 /* ============================================================
  * 1. 骨架定义
  * ============================================================ */
@@ -463,6 +465,354 @@ interface Dangle {
   py: number;
 }
 
+/* ============================================================
+ * 物理增强模块：KawaiiPhysics / Two-Bone IK / PD Controller
+ * ============================================================ */
+
+/** KawaiiPhysics 弹簧阻尼参数（灵感来自 UE4/Unity 同名插件） */
+interface SpringParams {
+  /** 弹簧刚度：值越大回弹越快/越硬（推荐 5~30） */
+  stiffness: number;
+  /** 阻尼系数：值越大摆动衰减越快（推荐 0.3~1.2） */
+  damping: number;
+  /** 重力加速度（像素/秒²，向下为正） */
+  gravity: number;
+  /** 最大摆动长度（像素） */
+  maxLength: number;
+  /** 角度阻力：模拟空气阻力对角速度的衰减（0~1，1=无阻力） */
+  drag: number;
+}
+
+/** 增强型动态件：支持 KawaiiPhysics 弹簧-阻尼-重力模型 */
+interface EnhancedDangle extends Dangle {
+  /** 当前角速度（弧度/秒），用于弹簧-阻尼积分 */
+  angVel: number;
+  /** 当前角度（弧度），相对锚点的下垂偏角 */
+  angle: number;
+  /** 弹簧参数配置 */
+  spring: SpringParams;
+  /** 是否启用 KawaiiPhysics 模式（false = 回退到 Verlet） */
+  useKawaii: boolean;
+}
+
+/** PD 控制器状态：用于程序化受击反应 */
+interface PDController {
+  /** 是否激活（进入受击状态时激活） */
+  active: boolean;
+  /** 目标姿态（要趋近的反应姿势） */
+  target: Pose | null;
+  /** 当前姿态的速度（每个关节的角速度） */
+  velocity: Pose;
+  /** 比例增益：误差响应强度（推荐 15~60） */
+  kp: number;
+  /** 微分增益：阻尼/速度抵抗（推荐 3~15） */
+  kd: number;
+  /** 剩余持续时间（秒），<=0 时自动停用 */
+  duration: number;
+  /** 总持续时间（用于计算衰减混合） */
+  totalDuration: number;
+  /** 混合权重（0→1→0，用于平滑进出） */
+  blend: number;
+}
+
+/** Two-Bone IK 结果 */
+interface IKResult {
+  /** 第一段关节角度（如大腿/上臂相对于根的角度） */
+  angle1: number;
+  /** 第二段关节角度（如小腿/前臂相对于第一段的夹角） */
+  angle2: number;
+  /** 是否可达（目标太远时为 false） */
+  reachable: boolean;
+}
+
+/**
+ * KawaiiPhysics 单步积分：弹簧-阻尼-重力钟摆模型
+ *
+ * 相比 Verlet 积分的优势：
+ * - 参数物理意义明确（刚度/阻尼/重力可独立调节）
+ * - 天然支持「过冲+回弹」效果（Q弹感）
+ * - 角度空间积分，不受坐标系缩放影响
+ * - 阻尼独立于刚度，可以做出"重而慢"或"轻而飘"的不同质感
+ *
+ * @param d 增强型动态件
+ * @param dt 时间步长（秒）
+ */
+const stepKawaiiPhysics = (d: EnhancedDangle, dt: number): void => {
+  if (!d.useKawaii) return;
+
+  // 初始化 NaN 状态
+  if (Number.isNaN(d.x)) {
+    d.angle = 0;
+    d.angVel = 0;
+    return;
+  }
+
+  const { stiffness, damping, gravity, maxLength, drag } = d.spring;
+
+  // 弹簧力：角度偏差 × 刚度（自然下垂角度 = π/2，即垂直向下）
+  const restAngle = Math.PI / 2;
+  const springTorque = -stiffness * (d.angle - restAngle);
+
+  // 重力力矩：g × L × sin(θ)，简化为 gravity * sin(angle)
+  const gravityTorque = gravity * Math.sin(d.angle);
+
+  // 阻尼力矩：-damping × angularVelocity
+  const dampingTorque = -damping * d.angVel;
+
+  // 总力矩 → 角加速度（假设单位转动惯量）
+  const angAccel = springTorque + gravityTorque + dampingTorque;
+
+  // 半隐式欧拉积分（比显式欧拉更稳定）
+  d.angVel += angAccel * dt;
+  d.angVel *= drag; // 空气阻力
+  d.angle += d.angVel * dt;
+
+  // 转换回笛卡尔坐标（锚点在原点，y 向下为正）
+  d.x = Math.sin(d.angle) * maxLength;
+  d.y = Math.cos(d.angle) * maxLength;
+
+  // 保存上一帧位置（用于渲染拖尾等）
+  d.px = d.x;
+  d.py = d.y;
+};
+
+/**
+ * Two-Bone IK 解析解：用余弦定理求两段肢体到达目标点的关节角
+ *
+ * 应用场景：
+ * - 脚部 IK：蹲下时保持脚掌贴地（不穿透地面）
+ * - 手部 IK：格挡/抓取时手准确到达目标位置
+ *
+ * 数学推导：
+ *   设 root→target 距离为 D，两段长度 len1, len2
+ *   由余弦定理：cos(elbow) = (len1² + len2² - D²) / (2·len1·len2)
+ *   shoulder角 = atan2(target) ± acos((len1² + D² - len2²) / (2·len1·D))
+ *
+ * @param root 根关节位置（如髋/肩）
+ * @param target 目标位置（如地面点/抓取点）
+ * @param len1 第一段长度（大腿/上臂）
+ * @param len2 第二段长度（小腿/前臂）
+ * @param bendDir 弯曲方向偏好（正=向外弯，负=向内弯，0=取较短路径）
+ * @returns IK 求解结果
+ */
+const twoBoneIK = (
+  root: Pt,
+  target: Pt,
+  len1: number,
+  len2: number,
+  bendDir: number = 1
+): IKResult => {
+  const dx = target.x - root.x;
+  const dy = target.y - root.y;
+  const dist = Math.hypot(dx, dy);
+
+  // 目标太远：伸直指向目标
+  if (dist >= len1 + len2 - 0.001) {
+    const angle = Math.atan2(dy, dx);
+    return { angle1: angle, angle2: 0, reachable: false };
+  }
+
+  // 目标太近：折叠起来
+  if (dist <= Math.abs(len1 - len2) + 0.001) {
+    const angle = Math.atan2(dy, dx);
+    const foldAngle = len1 > len2 ? 0 : Math.PI;
+    return { angle1: angle, angle2: foldAngle, reachable: false };
+  }
+
+  // 余弦定理求肘关节夹角
+  const cosElbow = (len1 * len1 + len2 * len2 - dist * dist) / (2 * len1 * len2);
+  const clampedCos = Math.max(-1, Math.min(1, cosElbow));
+  const elbowAngle = Math.acos(clampedCos);
+
+  // 求肩/髋关节角
+  const cosShoulder = (len1 * len1 + dist * dist - len2 * len2) / (2 * len1 * dist);
+  const clampedCosS = Math.max(-1, Math.min(1, cosShoulder));
+  const shoulderOffset = Math.acos(clampedCosS);
+  const baseAngle = Math.atan2(dy, dx);
+
+  // bendDir 决定肘部弯向哪边
+  const angle1 = baseAngle + shoulderOffset * bendDir;
+  const angle2 = Math.PI - elbowAngle; // 内角
+
+  return { angle1, angle2, reachable: true };
+};
+
+/**
+ * PD 控制器更新：生成程序化受击反应的姿态修正量
+ *
+ * PD 控制律：torque = Kp × (target - current) + Kd × (0 - velocity)
+ * - P 项：把当前姿态拉向目标姿态
+ * - D 项：阻尼振荡，防止过冲
+ *
+ * 相比关键帧插值的优势：
+ * - 反应幅度随打击力度连续变化（不是离散的几套动画）
+ * - 可以叠加多次受击（连招时反应自然累积）
+ * - 物理上正确的"被打后弹回来"行为
+ *
+ * @param pd PD 控制器状态
+ * @param current 当前姿态
+ * @param dt 时间步长（秒）
+ * @returns 修正后的姿态（需要与原始姿态混合使用）
+ */
+const updatePDReaction = (pd: PDController, current: Pose, dt: number): Pose => {
+  if (!pd.active || !pd.target) return current;
+
+  // 更新剩余时间
+  pd.duration -= dt;
+
+  // 计算混合权重：淡入→保持→淡出
+  const t = 1 - pd.duration / pd.totalDuration;
+  if (t < 0.1) {
+    pd.blend = t / 0.1; // 淡入
+  } else if (t > 0.8) {
+    pd.blend = (1 - t) / 0.2; // 淡出
+  } else {
+    pd.blend = 1; // 保持
+  }
+
+  // 时间到了就停用
+  if (pd.duration <= 0) {
+    pd.active = false;
+    pd.blend = 0;
+    return current;
+  }
+
+  // 对每个关节应用 PD 控制律
+  const pdJoint = (cur: number, tgt: number, vel: number): [number, number] => {
+    const error = tgt - cur;
+    const torque = pd.kp * error - pd.kd * vel;
+    const newVel = vel + torque * dt;
+    const newPos = cur + newVel * dt;
+    return [newPos, newVel];
+  };
+
+  const [lean, v0] = pdJoint(current.lean, pd.target.lean, pd.velocity.lean);
+  const [head, v1] = pdJoint(current.head, pd.target.head, pd.velocity.head);
+  const [armUB, v2] = pdJoint(current.armUB, pd.target.armUB, pd.velocity.armUB);
+  const [armLB, v3] = pdJoint(current.armLB, pd.target.armLB, pd.velocity.armLB);
+  const [armUF, v4] = pdJoint(current.armUF, pd.target.armUF, pd.velocity.armUF);
+  const [armLF, v5] = pdJoint(current.armLF, pd.target.armLF, pd.velocity.armLF);
+  const [legUB, v6] = pdJoint(current.legUB, pd.target.legUB, pd.velocity.legUB);
+  const [legLB, v7] = pdJoint(current.legLB, pd.target.legLB, pd.velocity.legLB);
+  const [legUF, v8] = pdJoint(current.legUF, pd.target.legUF, pd.velocity.legUF);
+  const [legLF, v9] = pdJoint(current.legLF, pd.target.legLF, pd.velocity.legLF);
+
+  // 更新速度状态
+  pd.velocity = {
+    lean: v0, head: v1, armUB: v2, armLB: v3, armUF: v4, armLF: v5,
+    legUB: v6, legLB: v7, legUF: v8, legLF: v9,
+    lift: 0, spin: 0, yaw: 0,
+    armUBD: 0, armUFD: 0, armLBD: 0, armLFD: 0,
+    legUBD: 0, legUFD: 0, legLBD: 0, legLFD: 0,
+  };
+
+  const result: Pose = {
+    lean, head, armUB, armLB, armUF, armLF, legUB, legLB, legUF, legLF,
+    lift: current.lift, spin: current.spin, yaw: current.yaw,
+    armUBD: current.armUBD, armUFD: current.armUFD,
+    armLBD: current.armLBD, armLFD: current.armLFD,
+    legUBD: current.legUBD, legUFD: current.legUFD,
+    legLBD: current.legLBD, legLFD: current.legLFD,
+  };
+
+  // 将 PD 结果与当前姿态按 blend 权重混合
+  return lerpPose(current, result, pd.blend);
+};
+
+/**
+ * PD 受击反应预设配置
+ *
+ * 四种标准反应类型，每种定义了：
+ * - target: 目标反应姿态（最大偏移量）
+ * - kp/kd: 控制增益（决定反应的"质感"）
+ * - duration: 反应持续时间
+ *
+ * 使用方式：activatePD(fighter, 'heavy') → 激活重型受击反应
+ */
+const PD_PRESETS: Record<string, { target: Pose; kp: number; kd: number; duration: number }> = {
+  /** 轻击：快速小幅度后仰，快速恢复 */
+  light: {
+    target: HURT_LIGHT,
+    kp: 45,
+    kd: 8,
+    duration: 0.28,
+  },
+  /** 重击：大幅度弓身，较慢恢复，有明显过冲-回弹 */
+  heavy: {
+    target: HURT_HEAVY,
+    kp: 28,
+    kd: 5,
+    duration: 0.48,
+  },
+  /** 上勾拳/头部受击：猛仰头，中等持续时间 */
+  up: {
+    target: HURT_UP,
+    kp: 35,
+    kd: 6,
+    duration: 0.45,
+  },
+  /** 腿部受击：屈膝踉跄，快速但幅度适中 */
+  leg: {
+    target: HURT_LEG,
+    kp: 40,
+    kd: 7,
+    duration: 0.32,
+  },
+  /** 倒地/击倒：最大幅度，最长持续，最软的阻尼（像布娃娃一样瘫下去） */
+  knockdown: {
+    target: STAGGER_B,
+    kp: 18,
+    kd: 3,
+    duration: 0.8,
+  },
+};
+
+/**
+ * 激活 PD 受击反应
+ * @param f 目标角色
+ * @param presetName 预设名称 ('light' | 'heavy' | 'up' | 'leg' | 'knockdown')
+ * @param intensity 强度倍数（0~1，默认 1.0；连击时可累加到 1.5）
+ */
+const activatePDReaction = (f: Fighter & { pdController?: PDController }, presetName: string, intensity: number = 1.0): void => {
+  if (!f.pdController) return;
+  const preset = PD_PRESETS[presetName];
+  if (!preset) return;
+
+  // 缩放目标姿态强度
+  const scaledTarget: Pose = {
+    lean: preset.target.lean * intensity,
+    head: preset.target.head * intensity,
+    armUB: preset.target.armUB * intensity,
+    armLB: preset.target.armLB * intensity,
+    armUF: preset.target.armUF * intensity,
+    armLF: preset.target.armLF * intensity,
+    legUB: preset.target.legUB * intensity,
+    legLB: preset.target.legLB * intensity,
+    legUF: preset.target.legUF * intensity,
+    legLF: preset.target.legLF * intensity,
+    lift: preset.target.lift,
+    spin: preset.target.spin,
+    yaw: preset.target.yaw,
+    armUBD: preset.target.armUBD * intensity,
+    armUFD: preset.target.armUFD * intensity,
+    armLBD: preset.target.armLBD * intensity,
+    armLFD: preset.target.armLFD * intensity,
+    legUBD: preset.target.legUBD * intensity,
+    legUFD: preset.target.legUFD * intensity,
+    legLBD: preset.target.legLBD * intensity,
+    legLFD: preset.target.legLFD * intensity,
+  };
+
+  f.pdController.active = true;
+  f.pdController.target = scaledTarget;
+  f.pdController.kp = preset.kp;
+  f.pdController.kd = preset.kd;
+  f.pdController.duration = preset.duration;
+  f.pdController.totalDuration = preset.duration;
+  f.pdController.blend = 0;
+  // 继承当前速度（连击时不归零，让反应自然叠加）
+};
+
 interface AtkHit {
   at: number;
   dmg: [number, number];
@@ -594,6 +944,427 @@ const FX_SPEC: Record<string, FxSpec> = {
   shuriken:    { style: 'punch', ring: 10, wide: 1.6, lines: 4,  len: 13, color: '#DDE6F5', zoom: 0,     dir: 1.0, sparksN: 4,  spread: 0.5 },
 };
 
+/* ============================================================
+ * 2.5 MOVE_META 统一招式元数据系统
+ *
+ * 把分散在 CLIPS / ATTACKS / FX_SPEC 的信息聚合为每招一条记录。
+ * 单一真相源，类型安全，易于扩展，支持将来 JSON 外部化。
+ * ============================================================ */
+
+/**
+ * 统一招式元数据：每个招式一条记录，聚合动画/攻击/特效/行为信息
+ */
+interface MoveMeta {
+  /** 招式标识（也是 CLIPS/ATTACKS/FX_SPEC 的 key） */
+  id: string;
+
+  // --- 分类 ---
+  category: 'punch' | 'kick' | 'weapon' | 'projectile' | 'throw' | 'special';
+  /** 所属装备流派（null = 通用招式，所有流派可用） */
+  gearRequired: Gear | null;
+
+  // --- 帧数据（从 CLIPS.dur + ATTACKS.hits.at 计算）---
+  frameData: {
+    startup: number;      // 起手帧数（60fps）
+    active: number;       // 活跃帧数（60fps）
+    recovery: number;     // 收招帧数（60fps）
+    total: number;        // 总帧数（60fps）
+  };
+
+  // --- 攻击属性（来自 ATTACKS）---
+  attack: {
+    part: StrikePart;
+    hits: AtkHit[];
+    hitstop: number;
+    react: 'light' | 'heavy' | 'up';
+    damage: [number, number];  // [min, max]
+    knockback: number;
+    forward?: number;     // 前冲距离
+    close?: boolean;      // 仅近距离
+    far?: boolean;        // 远距离突进
+    projectile?: 'bolt' | 'shuriken';
+    throw?: boolean;      // 投技
+  };
+
+  // --- 特效配置（来自 FX_SPEC）---
+  vfx: {
+    style: FxSpec['style'];
+    color: string;
+    zoom: number;
+    screenShake: number;
+  };
+
+  // --- 行为属性（AI 用）---
+  behavior: {
+    /** AI 选用权重基础值（会被行为模板调整） */
+    baseWeight: number;
+    /** 在连招中的位置：opener(起手)/filler(衔接)/ender(终结) */
+    comboRole: 'opener' | 'filler' | 'ender';
+    /** 是否适合反击用（counter-hit 加成） */
+    goodForCounter: boolean;
+    /** 破防能力（0~1，多大概率打破架势） */
+    guardDamage: number;
+    /** 对霸体/装甲的额外伤害倍率 */
+    armorMultiplier: number;
+  };
+
+  // --- 取消规则 ---
+  cancels: {
+    /** 链式取消：此招命中后可取消到的招式列表 */
+    chainTo: string[];
+    /** 目标取消窗口（进度值 0~1）*/
+    cancelFrom: number;
+    /** 是否可以被 RC（格挡取消）*/
+    rcCancelable: boolean;
+  };
+}
+
+/** 默认 VFX：当 FX_SPEC 中没有该招式时使用 */
+const DEFAULT_VFX: MoveMeta['vfx'] = {
+  style: 'punch',
+  color: '#FFFFFF',
+  zoom: 0,
+  screenShake: 1.0,
+};
+
+/**
+ * 招式分类：根据 ID 和攻击属性判断类别
+ */
+function categorizeMove(id: string, atk: Atk): MoveMeta['category'] {
+  if (atk.projectile) return 'projectile';
+  if (atk.throw) return 'throw';
+  if (['jab', 'cross', 'hook', 'uppercut', 'elbow', 'palm', 'gearPunch'].includes(id)) return 'punch';
+  if (['snapKick', 'pushKick', 'sideKick', 'roundKick', 'axeKick', 'spinKick', 'flyKick', 'scissorKick', 'knee'].includes(id)) return 'kick';
+  if (['thrust', 'smash', 'bash', 'slash', 'swing', 'iai', 'flailSwing'].includes(id)) return 'weapon';
+  return 'special';
+}
+
+/**
+ * 获取招式所需的装备流派
+ */
+function getGearForMove(id: string): Gear | null {
+  const moveGearMap: Record<string, Gear> = {
+    thrust: 'spear', smash: 'hammer', bash: 'shield',
+    slash: 'dagger', palm: 'monk', swing: 'viking',
+    iai: 'samurai', flailSwing: 'flail', gearPunch: 'puppeteer',
+    bolt: 'gunner', shuriken: 'ninja',
+  };
+  return moveGearMap[id] ?? null;
+}
+
+/**
+ * 计算基础 AI 权重：伤害越高的招权重越低（重招稀有），快招加分
+ */
+function computeBaseWeight(id: string, atk: Atk): number {
+  const power = atk.hits.reduce((s, h) => s + (h.dmg[0] + h.dmg[1]) / 2, 0);
+  let w = Math.max(0.3, 24 / power);
+  if (atk.hits.length > 1) w *= 0.75;
+  return w;
+}
+
+/**
+ * 推断连招角色：起手/衔接/终结
+ */
+function inferComboRole(id: string, atk: Atk): MoveMeta['behavior']['comboRole'] {
+  if (atk.react === 'light') return atk.hits[0]?.at && atk.hits[0].at < 0.45 ? 'opener' : 'filler';
+  if (atk.react === 'heavy' || atk.react === 'up') {
+    const power = atk.hits.reduce((s, h) => s + (h.dmg[0] + h.dmg[1]) / 2, 0);
+    return power > 20 ? 'ender' : 'filler';
+  }
+  return 'filler';
+}
+
+/**
+ * 估算破防能力（0~1）
+ */
+function estimateGuardDamage(atk: Atk): number {
+  const power = atk.hits.reduce((s, h) => s + (h.dmg[0] + h.dmg[1]) / 2, 0);
+  if (power >= 22) return 0.8;
+  if (power >= 16) return 0.5;
+  if (power >= 12) return 0.3;
+  return 0.15;
+}
+
+/**
+ * 计算连取消目标列表
+ */
+function computeChainTargets(id: string): string[] {
+  const chainMap: Record<string, string[]> = {
+    jab: ['cross', 'hook', 'uppercut', 'snapKick'],
+    cross: ['uppercut', 'hook', 'roundKick', 'elbow'],
+    hook: ['uppercut', 'cross', 'snapKick'],
+    uppercut: ['spinKick', 'flyKick', 'roundKick'],
+    elbow: ['jab', 'cross', 'uppercut', 'knee'],
+    snapKick: ['roundKick', 'axeKick', 'pushKick', 'jab'],
+    pushKick: ['sideKick', 'jab', 'cross'],
+    sideKick: ['roundKick', 'axeKick', 'jab'],
+    roundKick: ['axeKick', 'spinKick', 'hook'],
+    axeKick: ['spinKick', 'roundKick'],
+    spinKick: ['jab', 'cross', 'uppercut'],
+    flyKick: ['jab', 'cross', 'snapKick'],
+    scissorKick: ['roundKick', 'uppercut', 'jab'],
+    thrust: ['smash', 'bash', 'jab'],
+    smash: ['thrust', 'bash', 'gearPunch'],
+    bash: ['thrust', 'smash', 'jab'],
+    slash: ['palm', 'jab', 'slash'],
+    palm: ['elbow', 'knee', 'jab'],
+    swing: ['iai', 'smash', 'thrust'],
+    iai: ['swing', 'slash', 'cross'],
+    flailSwing: ['smash', 'swing', 'bash'],
+    gearPunch: ['elbow', 'cross', 'jab'],
+    bolt: ['shuriken', 'jab', 'snapKick'],
+    knee: ['elbow', 'palm', 'uppercut', 'jab'],
+    throw: [],
+    counterStrike: ['cross', 'uppercut', 'roundKick', 'iai'],
+    shuriken: ['bolt', 'jab', 'snapKick'],
+  };
+  return chainMap[id] ?? ['jab', 'cross'];
+}
+
+/**
+ * 从现有的分散表构建完整的 MoveMeta 条目
+ *
+ * @param id - 招式 ID
+ * @returns 完整的 MoveMeta，或 null 如果缺少必要数据
+ */
+function buildMoveMeta(id: string): MoveMeta | null {
+  const clip = CLIPS[id];
+  const atk = ATTACKS[id];
+  const fx = FX_SPEC[id];
+
+  if (!clip || !atk) return null;
+
+  // 从 atk.hits 计算帧数据（60fps）
+  const firstHit = atk.hits[0];
+  const lastHit = atk.hits[atk.hits.length - 1];
+  const totalFrames = Math.round(clip.dur * 60);
+  const startupFrames = Math.round((firstHit?.at ?? 0.5) * clip.dur * 60);
+  const activeEnd = Math.round((lastHit?.at ?? 0.6) * clip.dur * 60);
+  const activeFrames = Math.max(1, activeEnd - startupFrames);
+  const recoveryFrames = Math.max(1, totalFrames - activeEnd);
+
+  // 提取伤害范围
+  const allDmgs = atk.hits.flatMap(h => h.dmg);
+  const minDmg = Math.min(...allDmgs);
+  const maxDmg = Math.max(...allDmgs);
+
+  // 提取击退值（取最大的 knock）
+  const maxKnock = Math.max(...atk.hits.map(h => (h as AtkHit & { knock?: number }).knock ?? 0));
+
+  return {
+    id,
+    category: categorizeMove(id, atk),
+    gearRequired: getGearForMove(id),
+    frameData: {
+      startup: startupFrames,
+      active: activeFrames,
+      recovery: recoveryFrames,
+      total: totalFrames,
+    },
+    attack: {
+      part: atk.part,
+      hits: atk.hits,
+      hitstop: atk.hitstop,
+      react: atk.react,
+      damage: [minDmg, maxDmg],
+      knockback: maxKnock,
+      forward: atk.forward,
+      close: atk.close,
+      far: atk.far,
+      projectile: atk.projectile,
+      throw: atk.throw,
+    },
+    vfx: fx ? {
+      style: fx.style,
+      color: fx.color,
+      zoom: fx.zoom,
+      screenShake: fx.dir,
+    } : { ...DEFAULT_VFX },
+    behavior: {
+      baseWeight: computeBaseWeight(id, atk),
+      comboRole: inferComboRole(id, atk),
+      goodForCounter: atk.react === 'heavy' || id === 'counterStrike' || id === 'elbow' || id === 'iai',
+      guardDamage: estimateGuardDamage(atk),
+      armorMultiplier: id === 'smash' || id === 'swing' || id === 'flailSwing' ? 1.5 : 1.0,
+    },
+    cancels: {
+      chainTo: computeChainTargets(id),
+      cancelFrom: atk.cancelFrom ?? 0.78,
+      rcCancelable: !atk.throw && !atk.projectile,
+    },
+  };
+}
+
+/**
+ * MOVE_META_FULL 表：所有招式的完整统一元数据（从现有数据自动聚合生成）
+ */
+const _MOVE_META_FULL: Record<string, MoveMeta> = ((): Record<string, MoveMeta> => {
+  const table: Record<string, MoveMeta> = {};
+  for (const id of Object.keys(ATTACKS)) {
+    const meta = buildMoveMeta(id);
+    if (meta) table[id] = meta;
+  }
+  return table;
+})();
+
+/**
+ * 向后兼容的 MOVE_META：保留简化接口供 pickAttack 等现有代码使用。
+ * 新代码应优先使用 _MOVE_META_FULL 获取完整元数据。
+ *
+ * 每条记录包含：
+ * - startup/recovery: 起手收招时间（秒），从帧数据自动计算
+ * - breakGuard: 是否有破防能力
+ * - finisher: 是否是终结技
+ * - fast: 是否是快招（<=14帧起手）
+ * - counter: 是否适合反击
+ * - _full: 完整元数据引用
+ */
+const MOVE_META: Record<string, {
+  startup: number; recovery: number;
+  breakGuard?: boolean; finisher?: boolean;
+  fast?: boolean; counter?: boolean;
+  _full?: MoveMeta;
+}> = ((): Record<string, {
+  startup: number; recovery: number;
+  breakGuard?: boolean; finisher?: boolean;
+  fast?: boolean; counter?: boolean;
+  _full?: MoveMeta;
+}> => {
+  const compat: Record<string, {
+    startup: number; recovery: number;
+    breakGuard?: boolean; finisher?: boolean;
+    fast?: boolean; counter?: boolean;
+    _full?: MoveMeta;
+  }> = {};
+  for (const [id, meta] of Object.entries(_MOVE_META_FULL)) {
+    compat[id] = {
+      startup: meta.frameData.startup / 60,
+      recovery: meta.frameData.recovery / 60,
+      breakGuard: meta.behavior.guardDamage > 0.5,
+      finisher: meta.behavior.comboRole === 'ender',
+      fast: meta.frameData.startup <= 14,
+      counter: meta.behavior.goodForCounter,
+      _full: meta,
+    };
+  }
+  return compat;
+})();
+
+/**
+ * 基于 MOVE_META 计算 AI 招式选择权重
+ *
+ * 替代当前散落在决策函数中的硬编码权重，
+ * 提供统一、可扩展的招式排名接口。
+ *
+ * @param f - 当前 Fighter
+ * @param availableMoves - 可用的招式列表（考虑装备解锁 + 冷却）
+ * @param snap - 战斗快照
+ * @returns 排序后的 [{ move, weight, reason }] 列表
+ */
+function rankMoves(
+  f: Fighter,
+  availableMoves: string[],
+  snap: FightSnapshot
+): { move: string; weight: number; reason: string }[] {
+  const gear = GEAR_SPEC[f.build];
+
+  return availableMoves
+    .map(moveId => {
+      const fullMeta = _MOVE_META_FULL[moveId];
+      const meta = MOVE_META[moveId];
+      if (!fullMeta || !meta) return { move: moveId, weight: 0, reason: 'no_meta' };
+
+      let w = fullMeta.behavior.baseWeight;
+
+      // 距离修正
+      const dist = snap.self.distance;
+      if (fullMeta.attack.far && dist > (fullMeta.attack.forward ? 50 : 40)) w *= 1.5;
+      if (fullMeta.attack.close && dist < 25) w *= 2.0;
+      if (!fullMeta.attack.far && !fullMeta.attack.close && dist > 45) w *= 0.3;
+
+      // 行为模板修正
+      if (gear.behavior === 'zoner' && fullMeta.category === 'projectile') w *= 2.0;
+      if (gear.behavior === 'rusher' && fullMeta.attack.close) w *= 1.8;
+      if (gear.behavior === 'punisher' && fullMeta.behavior.goodForCounter && f.counterWindow > 0) w *= 3.0;
+      if (gear.behavior === 'brawler' && (meta.fast || fullMeta.attack.close)) w *= 1.4;
+
+      // 连招修正
+      if (f.comboTimer > 0) {
+        if (f.comboSteps && f.comboSteps.length > 0) {
+          const lastMove = f.comboSteps[f.comboSteps.length - 1];
+          const lastFullMeta = _MOVE_META_FULL[lastMove];
+          if (lastFullMeta && lastFullMeta.cancels.chainTo.includes(moveId)) w *= 2.5;
+        }
+        if (meta.fast) w *= 1.5;
+      }
+
+      // 破防优先
+      if (snap.opponent.guardBreak) w *= (fullMeta.behavior.comboRole === 'ender' ? 2.4 : 1.6);
+      if (snap.opponent.guard < 30 && fullMeta.behavior.guardDamage > 0.5) w *= 2.6;
+
+      // 局面修正
+      const oppHurt = ['hurtLight', 'hurtHeavy', 'hurtUp', 'stumble'].includes(snap.opponent.state);
+      const oppBlock = snap.opponent.state === 'block';
+      if (oppHurt && fullMeta.attack.damage[1] >= 20) w *= 2.2;
+      if (oppBlock) w *= fullMeta.behavior.guardDamage > 0.5 ? 2.0 : 0.5;
+      if (snap.opponent.hp < 30 && fullMeta.behavior.comboRole === 'ender') w *= 2.5;
+      if (f.hp < 30 && meta.fast) w *= 1.8;
+      if (f.counterWindow > 0 && fullMeta.behavior.goodForCounter) w *= 3.0;
+
+      // 流派专属加成
+      if (gear.moves.includes(moveId)) w *= 1.9;
+
+      return { move: moveId, weight: Math.max(0, w), reason: 'computed' };
+    })
+    .filter(x => x.weight > 0)
+    .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 验证所有数据表的一致性
+ *
+ * 检查项：
+ * 1. ATTACKS 中每个 key 都在 CLIPS 中有对应
+ * 2. FX_SPEC 应该覆盖所有攻击性招式
+ * 3. GEAR_SPEC.moves 引用的招式 ID 必须存在于 ATTACKS
+ * 4. 连取消目标必须指向存在的招式
+ *
+ * @returns 验证结果
+ */
+function validateDataConsistency(): { ok: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // 1. ATTACKS -> CLIPS 一致性
+  for (const k of Object.keys(ATTACKS)) {
+    if (!CLIPS[k]) errors.push(`ATTACKS["${k}"] 缺少对应的 CLIPS 条目`);
+  }
+
+  // 2. FX_SPEC 覆盖检查
+  for (const k of Object.keys(ATTACKS)) {
+    if (!FX_SPEC[k]) warnings.push(`ATTACKS["${k}"] 缺少 FX_SPEC 特效配置`);
+  }
+
+  // 3. GEAR_SPEC.moves 引用检查
+  for (const [gear, spec] of Object.entries(GEAR_SPEC)) {
+    for (const move of spec.moves) {
+      if (!ATTACKS[move]) errors.push(`GEAR_SPEC["${gear}"].moves 引用了不存在的招式: "${move}"`);
+      if (!CLIPS[move]) errors.push(`GEAR_SPEC["${gear}"].moves 引用了不存在的 CLIPS: "${move}"`);
+    }
+  }
+
+  // 4. 连取消目标有效性检查
+  for (const [id, meta] of Object.entries(_MOVE_META_FULL)) {
+    for (const target of meta.cancels.chainTo) {
+      if (!ATTACKS[target]) {
+        warnings.push(`MOVE_META["${id}"].cancels.chainTo 引用了不存在的招式: "${target}"`);
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
+}
+
 const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
 const easeOutBack = (k: number) => 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2);
 
@@ -707,11 +1478,244 @@ export interface FightSnapshot {
     /** 对手是否正处于破防硬直 */
     guardBreak: boolean;
   };
-  /** 正朝我飞来的投射物（弩箭/星镖）。之前 AI 完全看不见箭在飞，只能硬吃 */
-  incoming: { x: number; y: number; vx: number; eta: number }[];
+  /** 正朝我飞来的投射物（弩箭/星镖）。AI 用此字段做闪避/格挡决策。
+   *  kind 字段让 AI 能区分 bolt（高伤慢速→优先举盾）和 shuriken（低伤高速→优先跳跃） */
+  incoming: { x: number; y: number; vx: number; eta: number; kind: 'bolt' | 'shuriken' }[];
 }
 
 export type FightController = (snap: FightSnapshot) => Decision | null;
+
+/* ============================================================
+ * 3.5 输入缓冲与帧数据系统（格斗引擎核心基础设施）
+ * ============================================================ */
+
+/** 缓冲的输入条目 */
+interface BufferedInput {
+  /** 决策值 */
+  decision: Decision;
+  /** 输入时间戳（秒，用 elapsed 全局时钟） */
+  timestamp: number;
+  /** 是否已被消费 */
+  consumed: boolean;
+  /** 输入强度（AI 置信度 0~1） */
+  confidence: number;
+}
+
+/**
+ * 环形输入缓冲区
+ *
+ * 设计参考：FGC Input Buffer / Jazz Engine
+ * - 容量 15 帧（约 0.25 秒 @60fps），覆盖人类反应窗口
+ * - 支持模糊匹配：消费时按谓词查找，不要求精确匹配
+ * - 自动过期：超过窗口的输入在 getUnconsumed 时被过滤
+ */
+class InputBuffer {
+  private buffer: BufferedInput[] = [];
+  /** 缓冲窗口（秒）：15 帧 @60fps ≈ 0.25s */
+  readonly windowSeconds: number = 0.25;
+  /** 最大缓存条目数 */
+  readonly capacity: number = 16;
+
+  /** 压入一个决策到缓冲区 */
+  push(decision: Decision, confidence: number, now: number): void {
+    const entry: BufferedInput = {
+      decision,
+      timestamp: now,
+      consumed: false,
+      confidence: Math.max(0, Math.min(1, confidence)),
+    };
+    this.buffer.push(entry);
+    // 防止无限增长：超过容量时移除最旧的未消费条目
+    while (this.buffer.length > this.capacity) {
+      const removed = this.buffer.shift();
+      // 如果移除的是未消费条目，记录一下（调试用）
+      if (removed && !removed.consumed) { /* 可加日志 */ }
+    }
+  }
+
+  /**
+   * 消费最近一个匹配的输入（从新到旧搜索）
+   * @param predicate 匹配条件
+   * @returns 匹配到的条目（标记为已消费），无匹配返回 null
+   */
+  consume(predicate: (d: Decision) => boolean): BufferedInput | null {
+    for (let i = this.buffer.length - 1; i >= 0; i--) {
+      const entry = this.buffer[i];
+      if (!entry.consumed && predicate(entry.decision)) {
+        entry.consumed = true;
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 查看最近的输入但不消费
+   * @param predicate 匹配条件
+   * @param windowSeconds 可选的时间窗口（默认用类默认值）
+   * @returns 匹配到的条目引用（不标记消费），无匹配返回 null
+   */
+  peek(predicate: (d: Decision) => boolean, windowSeconds?: number): BufferedInput | null {
+    const win = windowSeconds ?? this.windowSeconds;
+    const now = performance.now() / 1000; // 近似当前时间，或传入精确时间
+    for (let i = this.buffer.length - 1; i >= 0; i--) {
+      const entry = this.buffer[i];
+      if (!entry.consumed && predicate(entry.decision)) {
+        // 检查是否在时间窗口内（这里用相对时间差近似）
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  /** 清空缓冲区所有条目 */
+  clear(): void {
+    this.buffer.length = 0;
+  }
+
+  /**
+   * 获取未消费且在时间窗口内的输入列表（从旧到新）
+   * @param now 当前时间戳（秒）
+   * @param windowSeconds 时间窗口
+   * @returns 有效未消费输入列表
+   */
+  getUnconsumed(now: number, windowSeconds?: number): BufferedInput[] {
+    const win = windowSeconds ?? this.windowSeconds;
+    const cutoff = now - win;
+    return this.buffer.filter((e) => !e.consumed && e.timestamp >= cutoff);
+  }
+
+  /** 获取缓冲区中总条目数（含已消费） */
+  get size(): number {
+    return this.buffer.length;
+  }
+}
+
+/**
+ * 标准帧数据模型（Startup / Active / Recovery 三段式）
+ *
+ * 格斗游戏通用框架：
+ * - Startup: 从指令输入到攻击判定生效前的帧数
+ * - Active: 攻击判定有效的帧范围
+ * - Recovery: 判定结束后到完全恢复可行动的帧数
+ *
+ * 本引擎用「进度值 0~1」（clipT/clipDur）代替帧号，
+ * 所以 startup/activeStart/activeEnd 都是 0~1 的比例值。
+ */
+interface FrameData {
+  /** 起手阶段结束点（进度 0~1）：第一段 hit 的 at 值 */
+  startup: number;
+  /** 活跃阶段起始点（进度 0~1）：最早 hit 的 at */
+  activeStart: number;
+  /** 活跃阶段结束点（进度 0~1）：最晚 hit 的 at */
+  activeEnd: number;
+  /** 收招阶段起始点（进度 0~1）：活跃结束 + 少许帧 */
+  recoveryStart: number;
+  /** 总持续时间（秒），来自 clip.dur */
+  totalDuration: number;
+
+  // ---- 派生属性（从 ATTACKS + MOVE_META 计算）----
+  /** 取消窗口起始（进度值 0~1）：命中后过了这个点就能取消收招接下一段 */
+  cancelFrom: number;
+  /** 被防时的 frame advantage（正=有利，负=不利），单位：秒 */
+  blockAdvantage: number;
+  /** 命中时的 frame advantage，单位：秒 */
+  hitAdvantage: number;
+  /** 是否是多段打击招式 */
+  multiHit: boolean;
+  /** 总段数 */
+  hitCount: number;
+}
+
+/**
+ * 从现有的 Atk 定义和 Clip 数据计算标准帧数据
+ *
+ * 计算规则：
+ * - startup = 第一段 hit.at（起手到首次判定生效）
+ * - activeStart = 第一段 hit.at
+ * - activeEnd = 最后一段 hit.at
+ * - recoveryStart = activeEnd + 2~4 帧的等价进度（约 0.03~0.06）
+ * - blockAdvantage ≈ -(totalDuration - recoveryStart/1) * totalDuration + 0.03s（被防通常略不利）
+ * - hitAdvantage ≈ -(totalDuration - recoveryStart/1) * totalDuration + 0.07s（命中通常稍有利）
+ *
+ * @param moveName 招式名（用于查 MOVE_META）
+ * @param atk 攻击数据（来自 ATTACKS 表）
+ * @param clip 动画片段数据（来自 CLIPS 表）
+ */
+function computeFrameData(moveName: string, atk: Atk, clip: Clip): FrameData {
+  const hits = atk.hits;
+  const hitCount = hits.length;
+  const multiHit = hitCount > 1;
+
+  // 起手和活跃窗口
+  const firstAt = Math.min(...hits.map((h) => h.at));
+  const lastAt = Math.max(...hits.map((h) => h.at));
+
+  const startup = firstAt;
+  const activeStart = firstAt;
+  const activeEnd = lastAt;
+
+  // 收招起点：活跃结束后约 2~4 帧（@60fps ≈ 0.033~0.067s）
+  // 多段招收招稍慢
+  const recoveryPad = multiHit ? 0.06 : 0.04;
+  const recoveryStart = Math.min(1, activeEnd + recoveryPad);
+
+  // 取消窗口：优先用 atk.cancelFrom，否则用 MOVE_META 或默认值
+  const cancelFrom = atk.cancelFrom ?? 0.78;
+
+  // Frame advantage 估算（秒）
+  // 公式：剩余收招时间的负值 + 基础修正
+  const remainingRecovery = (1 - recoveryStart / 1) * clip.dur;
+  const meta = MOVE_META[moveName];
+  // 被防优势：重招被防更有利（对手硬直长），快招不利
+  const blockBonus = meta?.breakGuard ? 0.05 : meta?.fast ? -0.02 : 0.01;
+  const blockAdvantage = -remainingRecovery + 0.025 + blockBonus;
+  // 命中优势：通常比被防多 3~5 帧有利
+  const hitBonus = meta?.finisher ? 0.06 : meta?.counter ? 0.04 : 0.02;
+  const hitAdvantage = -remainingRecovery + 0.06 + hitBonus;
+
+  return {
+    startup,
+    activeStart,
+    activeEnd,
+    recoveryStart,
+    totalDuration: clip.dur,
+    cancelFrom,
+    blockAdvantage,
+    hitAdvantage,
+    multiHit,
+    hitCount,
+  };
+}
+
+/** 判定当前招式所处阶段 */
+type AttackPhase = 'none' | 'startup' | 'active' | 'recovery';
+
+/**
+ * 获取当前招式的攻击阶段
+ * @param prog 当前动画进度（0~1）
+ * @param fd 帧数据（可为 null）
+ */
+function getAttackPhase(prog: number, fd: FrameData | null): AttackPhase {
+  if (!fd) return 'none';
+  if (prog < fd.activeStart) return 'startup';
+  if (prog <= fd.activeEnd) return 'active';
+  return 'recovery';
+}
+
+/** 决策历史条目（用于调试和模式分析） */
+interface DecisionRecord {
+  /** 时间戳（秒） */
+  t: number;
+  /** 决策值 */
+  decision: Decision;
+  /** 置信度 */
+  confidence: number;
+  /** 来源：'heuristic' | 'buffer' | 'external' | 'manual' */
+  source: string;
+  /** 是否被执行（false 表示被缓冲或被 intentLock 抑制） */
+  executed: boolean;
+}
 
 let externalController: FightController | null = null;
 
@@ -743,6 +1747,130 @@ interface Root {
   top: number; // 头顶相对骨盆的高度（造型相关）
 }
 
+/* ============================================================
+ * 调试系统类型定义
+ * ============================================================ */
+
+/** 命中盒类型：格斗游戏行业标准 6 色系统（SF6 / GGPO 工具） */
+export enum HitboxType {
+  /** 攻击命中盒（红）- 出招时出现的攻击判定区域 */
+  Attack = 'attack',
+  /** 受击盒（蓝）- 可以被攻击命中的身体区域 */
+  Hurt = 'hurt',
+  /** 格挡盒（绿）- 格挡状态下生效的防御判定区域 */
+  Guard = 'guard',
+  /** 脆弱盒（黄）- 特殊状态（破防/硬直）下扩大受击区域 */
+  Vulnerable = 'vulnerable',
+  /** 传感器盒（紫）- 地面检测/距离探测等非伤害判定 */
+  Sensor = 'sensor',
+  /** 投射物盒（青）- 弹道类招式的飞行道具判定 */
+  Projection = 'projection',
+}
+
+/** 单个调试命中盒 */
+export interface DebugHitbox {
+  type: HitboxType;
+  /** 圆形：cx, cy, r；矩形：x, y, w, h */
+  cx?: number; cy?: number; r?: number;
+  x?: number; y?: number; w?: number; h?: number;
+  /** 关联的关节名（用于跟随骨骼运动） */
+  joint?: keyof Joints;
+  /** 激活时间段 [start, end] (0~1 相对 clip 进度) */
+  activeRange: [number, number];
+}
+
+/** 洋葱皮/鬼帧：姿态历史快照 */
+export interface PoseGhost {
+  /** 世界坐标关节位置 */
+  joints: Record<keyof Joints, Pt>;
+  /** 时间戳（用于淡出计算） */
+  t: number;
+  /** 透明度（0=完全透明，1=完全不透明） */
+  alpha: number;
+}
+
+/** 帧步进控制状态 */
+interface FrameStepControl {
+  paused: boolean;
+  stepForward: boolean;
+  stepBackward: boolean;
+  speed: number;        // 播放速度倍率 (0.1 ~ 5.0)
+  currentFrame: number; // 当前帧编号
+  totalFrames: number;  // 总帧数
+}
+
+/** 多级调试选项 */
+export interface DebugOptions {
+  /** 骨骼显示（原有功能） */
+  bones?: boolean;
+  /** 命中盒显示（6色系统） */
+  hitboxes?: boolean;
+  /** 帧信息显示（帧计数器、clip进度条） */
+  frames?: boolean;
+  /** 完整模式 = bones + hitboxes + frames + HUD + onion skin */
+  full?: boolean;
+  /** 洋葱皮/鬼帧显示 */
+  onionSkin?: boolean;
+  /** 洋葱皮配置 */
+  onionConfig?: {
+    maxGhosts: number;   // 最大鬼帧数量（默认 5）
+    fadeRate: number;    // 淡出速率（默认 0.03/帧）
+    color: string;       // 鬼帧颜色（默认 'rgba(100,180,255,ALPHA)'）
+  };
+  /** 帧步进模式 */
+  frameStep?: boolean;
+  /** SF6 风格调试 HUD */
+  hud?: boolean;
+  /** 命中盒详细程度：'simple'=仅当前激活, 'full'=所有定义的盒子 */
+  hitboxDetail?: 'simple' | 'full';
+}
+
+/** 解析 URL 调试参数 */
+const parseDebugParams = (urlParams: URLSearchParams): DebugOptions => {
+  const raw = urlParams.get('debug');
+  const opts: DebugOptions = {};
+  if (!raw) return opts;
+
+  const modes = raw.split(',').map(s => s.trim().toLowerCase());
+  for (const m of modes) {
+    if (m === 'bones') opts.bones = true;
+    else if (m === 'hitboxes') opts.hitboxes = true;
+    else if (m === 'frames') opts.frames = true;
+    else if (m === 'full') { opts.bones = opts.hitboxes = opts.frames = opts.full = opts.hud = true; opts.onionSkin = true; }
+    else if (m === 'onion') opts.onionSkin = true;
+    else if (m === 'hud') opts.hud = true;
+    // 兼容旧版 ?debug=bones
+    else if (m === 'bones') opts.bones = true;
+  }
+
+  // 帧步进通过单独参数控制
+  if (urlParams.get('frame_step') === 'true' || urlParams.get('frame_step') === '1') {
+    opts.frameStep = true;
+  }
+
+  return opts;
+};
+
+/** 命中盒颜色映射（SF6 标准 6 色） */
+const HITBOX_COLORS: Record<HitboxType, { fill: string; stroke: string }> = {
+  [HitboxType.Attack]:     { fill: 'rgba(231,76,60,0.25)',  stroke: '#E74C3C' },      // 红 - 攻击
+  [HitboxType.Hurt]:       { fill: 'rgba(52,152,219,0.20)',  stroke: '#3498DB' },      // 蓝 - 受击
+  [HitboxType.Guard]:      { fill: 'rgba(46,204,113,0.22)',  stroke: '#2ECC71' },      // 绿 - 格挡
+  [HitboxType.Vulnerable]: { fill: 'rgba(241,196,15,0.25)',  stroke: '#F1C40F' },      // 黄 - 脆弱
+  [HitboxType.Sensor]:     { fill: 'rgba(155,89,182,0.20)',  stroke: '#9B59B6' },      // 紫 - 传感
+  [HitboxType.Projection]: { fill: 'rgba(26,188,156,0.22)',  stroke: '#1ABC9C' },      // 青 - 投射
+};
+
+/** 命中盒类型中文标签 */
+const HITBOX_LABELS: Record<HitboxType, string> = {
+  [HitboxType.Attack]:     'ATK',
+  [HitboxType.Hurt]:       'HURT',
+  [HitboxType.Guard]:      'GRD',
+  [HitboxType.Vulnerable]: 'VULN',
+  [HitboxType.Sensor]:     'SENS',
+  [HitboxType.Projection]: 'PROJ',
+};
+
 export interface FightOptions {
   /** 画布元素 id，默认 fight-canvas */
   canvasId?: string;
@@ -762,6 +1890,14 @@ export interface FightOptions {
   manual?: boolean;
   /** 参数覆盖：侵略性 / 格挡倾向 / 血量 */
   params?: { aggression?: number; guardChance?: number; hp?: number };
+  /** 调试模式：实时绘制骨骼轮廓叠加层（关节点+骨连线），用于动作精调。
+   *  也可通过 URL 参数 ?debug=bones 自动启用。
+   *  @deprecated 使用 debugOptions 替代以获得更多调试功能 */
+  debugBones?: boolean;
+  /** 增强调试选项：支持多级调试模式（bones/hitboxes/frames/full）
+   *  通过 URL 参数启用：?debug=hitboxes&frame_step=true
+   *  或 ?debug=full 启用完整调试套件 */
+  debugOptions?: DebugOptions;
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
@@ -769,6 +1905,52 @@ export function initFightBand(opts: FightOptions = {}): void {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+
+  // URL 参数调试系统：支持多级模式
+  // ?debug=bones|hitboxes|frames|full|onion|hud (&frame_step=true)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlDebugOpts = parseDebugParams(urlParams);
+  // 合并选项：显式传入 > URL 参数 > 默认值
+  const debugOptions: DebugOptions = {
+    bones: opts.debugBones ?? opts.debugOptions?.bones ?? urlDebugOpts.bones,
+    hitboxes: opts.debugOptions?.hitboxes ?? urlDebugOpts.hitboxes,
+    frames: opts.debugOptions?.frames ?? urlDebugOpts.frames,
+    full: opts.debugOptions?.full ?? urlDebugOpts.full,
+    onionSkin: opts.debugOptions?.onionSkin ?? urlDebugOpts.onionSkin,
+    onionConfig: opts.debugOptions?.onionConfig ?? urlDebugOpts.onionConfig ?? {
+      maxGhosts: 5,
+      fadeRate: 0.03,
+      color: 'rgba(100,180,255,ALPHA)',
+    },
+    frameStep: opts.debugOptions?.frameStep ?? urlDebugOpts.frameStep,
+    hud: opts.debugOptions?.hud ?? urlDebugOpts.hud,
+    hitboxDetail: opts.debugOptions?.hitboxDetail ?? 'simple',
+  };
+  // 向后兼容：debugBones 或 debug=bones 时自动启用 bones
+  const debugBones = debugOptions.bones ?? false;
+
+  // MOVE_META 数据一致性验证（仅 debug 模式输出）
+  if (debugBones || urlParams.get('debug') !== null) {
+    const result = validateDataConsistency();
+    if (!result.ok) {
+      console.error('[MOVE_META] Data consistency errors:', result.errors);
+    }
+    if (result.warnings.length > 0) {
+      console.warn('[MOVE_META] Warnings:', result.warnings);
+    }
+    if (result.ok && result.warnings.length === 0) {
+      console.log('[MOVE_META] All data tables consistent ✓');
+    }
+  }
+
+  // full 模式一键全开
+  if (debugOptions.full) {
+    debugOptions.bones = true;
+    debugOptions.hitboxes = true;
+    debugOptions.frames = true;
+    debugOptions.hud = true;
+    debugOptions.onionSkin = true;
+  }
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const SKINS = [
@@ -793,37 +1975,38 @@ export function initFightBand(opts: FightOptions = {}): void {
   ];
 
   /**
-   * 九人角色表：按「剪影差异 + 武器轨迹 + 动态件类型」分化，每人占一个打法生态位。
+   * 十五人角色表：按「剪影差异 + 武器轨迹 + 动态件类型」分化，每人占一个打法生态位。
    *   build      装备流派（决定剪影主装饰与动态件）
    *   skin       配色
-   *   aggression 进攻欲 / guardChance 格挡倾向 / preferDist 偏好距离
+   *   aggression 进攻欲 / guardChance 格挡倾向
+   *   preferDist 已移除 → 由 computePreferDist(GEAR_SPEC[build].behavior) 自动计算
    */
   const ROSTER = [
-    { name: '疾风剑客', build: 'swordsman' as const, skin: 1, aggression: 0.85, guardChance: 0.4, preferDist: 30 },
-    { name: '林影游侠', build: 'ranger' as const, skin: 4, aggression: 0.6, guardChance: 0.35, preferDist: 33 },
-    { name: '铁壁盾卫', build: 'shield' as const, skin: 6, aggression: 0.4, guardChance: 0.85, preferDist: 26 },
-    { name: '青芒枪兵', build: 'spear' as const, skin: 7, aggression: 0.6, guardChance: 0.5, preferDist: 38 },
-    { name: '双刃影客', build: 'dagger' as const, skin: 8, aggression: 1.0, guardChance: 0.25, preferDist: 24 },
-    { name: '拂尘武僧', build: 'monk' as const, skin: 9, aggression: 0.8, guardChance: 0.45, preferDist: 27 },
-    { name: '熔岩矮匠', build: 'hammer' as const, skin: 10, aggression: 0.65, guardChance: 0.3, preferDist: 28 },
-    { name: '硝石弩手', build: 'gunner' as const, skin: 11, aggression: 0.5, guardChance: 0.4, preferDist: 40 },
-    { name: '赤焰武人', build: 'swordsman' as const, skin: 0, aggression: 1.0, guardChance: 0.5, preferDist: 27 },
-    { name: '暗影忍者', build: 'ninja' as const, skin: 12, aggression: 0.75, guardChance: 0.2, preferDist: 36 },
-    { name: '醉卧仙', build: 'drunk' as const, skin: 13, aggression: 0.7, guardChance: 0.35, preferDist: 26 },
-    { name: '血斧维京', build: 'viking' as const, skin: 14, aggression: 0.95, guardChance: 0.25, preferDist: 29 },
-    { name: '月下武士', build: 'samurai' as const, skin: 15, aggression: 0.65, guardChance: 0.55, preferDist: 32 },
-    { name: '铁链判官', build: 'flail' as const, skin: 16, aggression: 0.7, guardChance: 0.4, preferDist: 31 },
-    { name: '齿轮机关师', build: 'puppeteer' as const, skin: 17, aggression: 0.6, guardChance: 0.45, preferDist: 30 },
+    { name: '疾风剑客', build: 'swordsman' as const, skin: 1, aggression: 0.85, guardChance: 0.4 },
+    { name: '林影游侠', build: 'ranger' as const, skin: 4, aggression: 0.6, guardChance: 0.35 },
+    { name: '铁壁盾卫', build: 'shield' as const, skin: 6, aggression: 0.4, guardChance: 0.85 },
+    { name: '青芒枪兵', build: 'spear' as const, skin: 7, aggression: 0.6, guardChance: 0.5 },
+    { name: '双刃影客', build: 'dagger' as const, skin: 8, aggression: 1.0, guardChance: 0.25 },
+    { name: '拂尘武僧', build: 'monk' as const, skin: 9, aggression: 0.8, guardChance: 0.45 },
+    { name: '熔岩矮匠', build: 'hammer' as const, skin: 10, aggression: 0.65, guardChance: 0.3 },
+    { name: '硝石弩手', build: 'gunner' as const, skin: 11, aggression: 0.5, guardChance: 0.4 },
+    { name: '赤焰武人', build: 'swordsman' as const, skin: 0, aggression: 1.0, guardChance: 0.5 },
+    { name: '暗影忍者', build: 'ninja' as const, skin: 12, aggression: 0.75, guardChance: 0.2 },
+    { name: '醉卧仙', build: 'drunk' as const, skin: 13, aggression: 0.7, guardChance: 0.35 },
+    { name: '血斧维京', build: 'viking' as const, skin: 14, aggression: 0.95, guardChance: 0.25 },
+    { name: '月下武士', build: 'samurai' as const, skin: 15, aggression: 0.65, guardChance: 0.55 },
+    { name: '铁链判官', build: 'flail' as const, skin: 16, aggression: 0.7, guardChance: 0.4 },
+    { name: '齿轮机关师', build: 'puppeteer' as const, skin: 17, aggression: 0.6, guardChance: 0.45 },
   ];
 
-  /** 把角色表里的设定套到一个斗士身上，并触发登场 */
+  /** 把角色表里的设定套到一个斗士身上，并触发登场。preferDist 由行为 archetype 自动计算 */
   const applyRoster = (f: Fighter, r: (typeof ROSTER)[number]) => {
     f.name = r.name;
     f.build = r.build;
     f.skin = SKINS[r.skin];
     f.aggression = r.aggression;
     f.guardChance = r.guardChance;
-    f.preferDist = r.preferDist;
+    f.preferDist = computePreferDist(GEAR_SPEC[r.build].behavior);
     f.enterT = f.enterDur;
   };
 
@@ -873,12 +2056,183 @@ export function initFightBand(opts: FightOptions = {}): void {
     | 'throw'
     | 'counterStrike';
 
+  /* ========== HFSM: 基于 @statewalker/fsm 的分层有限状态机 ========== */
+
+  /**
+   * 战斗状态机配置：4 层嵌套层级状态机
+   *
+   * 层级结构（从外到内，优先级从高到低）：
+   *   root (fighter)
+   *   ├── System      — KO / 登场 / 命中定格（最高优先级）
+   *   ├── HitReaction — 受击反应（被打/踉跄/倒地/起身）
+   *   ├── Combat      — 攻击/格挡/蹲/翻滚
+   *   └── Locomotion  — 待机/走/接近/撤退/跳跃
+   *
+   * 每层的 INITIAL 状态自动下落到内层，实现"外层空闲时交给下层处理"的语义。
+   * 高优先级事件（如受击）通过根级别或外层通配符 [STATE_ANY, ...] 接管。
+   */
+  const fighterFsmConfig: FsmStateConfig = {
+    key: 'fighter',
+    states: [
+      {
+        key: 'system',
+        transitions: [
+          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_ANY, 'HURT_LIGHT', 'hitReaction'],
+          [STATE_ANY, 'HURT_HEAVY', 'hitReaction'],
+          [STATE_ANY, 'HURT_UP', 'hitReaction'],
+          [STATE_ANY, 'HURT_LEG', 'hitReaction'],
+          [STATE_ANY, 'STUMBLE', 'hitReaction'],
+        ],
+        states: [{ key: 'idle' }]
+      },
+      {
+        key: 'hitReaction',
+        transitions: [
+          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_ANY, 'HURT_LIGHT', 'hurtLight'],
+          [STATE_ANY, 'HURT_HEAVY', 'hurtHeavy'],
+          [STATE_ANY, 'HURT_UP', 'hurtUp'],
+          [STATE_ANY, 'HURT_LEG', 'hurtLeg'],
+          [STATE_ANY, 'STUMBLE', 'stumble'],
+          ['stumble', 'KNOCK_DOWN', 'down'],
+          ['down', 'GETUP', 'getup'],
+          ['hurtLight', 'RECOVER', STATE_INITIAL],
+          ['hurtHeavy', 'RECOVER', STATE_INITIAL],
+          ['hurtUp', 'RECOVER', STATE_INITIAL],
+          ['hurtLeg', 'RECOVER', STATE_INITIAL],
+          ['getup', 'RECOVER', STATE_INITIAL],
+          // 受击态之间互相切换
+          ['hurtLight', 'HURT_HEAVY', 'hurtHeavy'],
+          ['hurtLight', 'HURT_UP', 'hurtUp'],
+          ['hurtHeavy', 'HURT_LIGHT', 'hurtLight'],
+          ['hurtHeavy', 'HURT_UP', 'hurtUp'],
+          ['hurtLight', 'HURT_LEG', 'hurtLeg'],
+          ['hurtHeavy', 'HURT_LEG', 'hurtLeg'],
+          ['hurtUp', 'HURT_LEG', 'hurtLeg'],
+          ['hurtLeg', 'HURT_LIGHT', 'hurtLight'],
+          ['hurtLeg', 'HURT_HEAVY', 'hurtHeavy'],
+          ['hurtLeg', 'HURT_UP', 'hurtUp'],
+        ],
+        states: [
+          { key: 'idle' }, { key: 'hurtLight' }, { key: 'hurtHeavy' },
+          { key: 'hurtUp' }, { key: 'hurtLeg' }, { key: 'stumble' },
+          { key: 'down' }, { key: 'getup' },
+        ]
+      },
+      {
+        key: 'combat',
+        transitions: [
+          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          // 从 idle 发起的攻击（30 个）
+          ['idle', 'JAB', 'jab'], ['idle', 'CROSS', 'cross'], ['idle', 'HOOK', 'hook'],
+          ['idle', 'UPPERCUT', 'uppercut'], ['idle', 'ELBOW', 'elbow'], ['idle', 'KNEE', 'knee'],
+          ['idle', 'THROW', 'throw'], ['idle', 'COUNTER_STRIKE', 'counterStrike'],
+          ['idle', 'SNAP_KICK', 'snapKick'], ['idle', 'PUSH_KICK', 'pushKick'],
+          ['idle', 'SIDE_KICK', 'sideKick'], ['idle', 'ROUND_KICK', 'roundKick'],
+          ['idle', 'AXE_KICK', 'axeKick'], ['idle', 'SPIN_KICK', 'spinKick'],
+          ['idle', 'FLY_KICK', 'flyKick'], ['idle', 'SCISSOR_KICK', 'scissorKick'],
+          ['idle', 'THRUST', 'thrust'], ['idle', 'SMASH', 'smash'], ['idle', 'BASH', 'bash'],
+          ['idle', 'SLASH', 'slash'], ['idle', 'PALM', 'palm'], ['idle', 'SWING', 'swing'],
+          ['idle', 'IAI', 'iai'], ['idle', 'FLAIL_SWING', 'flailSwing'],
+          ['idle', 'GEAR_PUNCH', 'gearPunch'], ['idle', 'BOLT', 'bolt'],
+          ['idle', 'SHURIKEN', 'shuriken'],
+          // 防御/特殊
+          ['idle', 'BLOCK', 'block'], ['idle', 'CROUCH', 'crouch'], ['idle', 'ROLL', 'roll'],
+          // 连招取消
+          ['jab', 'COMBO_CROSS', 'cross'], ['jab', 'COMBO_HOOK', 'hook'],
+          ['jab', 'COMBO_UPPERCUT', 'uppercut'], ['jab', 'COMBO_SNAP_KICK', 'snapKick'],
+          ['cross', 'COMBO_HOOK', 'hook'], ['cross', 'COMBO_UPPERCUT', 'uppercut'],
+          ['cross', 'COMBO_SNAP_KICK', 'snapKick'],
+          ['hook', 'COMBO_UPPERCUT', 'uppercut'], ['hook', 'COMBO_ROUND_KICK', 'roundKick'],
+          ['snapKick', 'COMBO_ROUND_KICK', 'roundKick'], ['snapKick', 'COMBO_SIDE_KICK', 'sideKick'],
+          ['pushKick', 'COMBO_ROUND_KICK', 'roundKick'], ['pushKick', 'COMBO_AXE_KICK', 'axeKick'],
+          ['cross', 'COMBO_COUNTER_STRIKE', 'counterStrike'],
+          ['uppercut', 'COMBO_COUNTER_STRIKE', 'counterStrike'],
+          ['roundKick', 'COMBO_SPIN_KICK', 'spinKick'], ['roundKick', 'COMBO_AXE_KICK', 'axeKick'],
+          ['axeKick', 'COMBO_SPIN_KICK', 'spinKick'], ['axeKick', 'COMBO_FLY_KICK', 'flyKick'],
+          ['thrust', 'COMBO_SLASH', 'slash'], ['thrust', 'COMBO_SMASH', 'smash'],
+          ['slash', 'COMBO_IAI', 'iai'], ['slash', 'COMBO_SWING', 'swing'],
+          ['smash', 'COMBO_BASH', 'bash'],
+          // 自然结束 → INITIAL
+          ['jab', 'ATTACK_END', STATE_INITIAL], ['cross', 'ATTACK_END', STATE_INITIAL],
+          ['hook', 'ATTACK_END', STATE_INITIAL], ['uppercut', 'ATTACK_END', STATE_INITIAL],
+          ['elbow', 'ATTACK_END', STATE_INITIAL], ['knee', 'ATTACK_END', STATE_INITIAL],
+          ['throw', 'ATTACK_END', STATE_INITIAL], ['counterStrike', 'ATTACK_END', STATE_INITIAL],
+          ['snapKick', 'ATTACK_END', STATE_INITIAL], ['pushKick', 'ATTACK_END', STATE_INITIAL],
+          ['sideKick', 'ATTACK_END', STATE_INITIAL], ['roundKick', 'ATTACK_END', STATE_INITIAL],
+          ['axeKick', 'ATTACK_END', STATE_INITIAL], ['spinKick', 'ATTACK_END', STATE_INITIAL],
+          ['flyKick', 'ATTACK_END', STATE_INITIAL], ['scissorKick', 'ATTACK_END', STATE_INITIAL],
+          ['thrust', 'ATTACK_END', STATE_INITIAL], ['smash', 'ATTACK_END', STATE_INITIAL],
+          ['bash', 'ATTACK_END', STATE_INITIAL], ['slash', 'ATTACK_END', STATE_INITIAL],
+          ['palm', 'ATTACK_END', STATE_INITIAL], ['swing', 'ATTACK_END', STATE_INITIAL],
+          ['iai', 'ATTACK_END', STATE_INITIAL], ['flailSwing', 'ATTACK_END', STATE_INITIAL],
+          ['gearPunch', 'ATTACK_END', STATE_INITIAL], ['bolt', 'ATTACK_END', STATE_INITIAL],
+          ['shuriken', 'ATTACK_END', STATE_INITIAL],
+          ['block', 'ACTION_END', STATE_INITIAL], ['crouch', 'ACTION_END', STATE_INITIAL],
+          ['roll', 'ACTION_END', STATE_INITIAL],
+        ],
+        states: [
+          { key: 'idle' },
+          { key: 'jab' }, { key: 'cross' }, { key: 'hook' }, { key: 'uppercut' },
+          { key: 'elbow' }, { key: 'knee' }, { key: 'throw' }, { key: 'counterStrike' },
+          { key: 'snapKick' }, { key: 'pushKick' }, { key: 'sideKick' },
+          { key: 'roundKick' }, { key: 'axeKick' }, { key: 'spinKick' },
+          { key: 'flyKick' }, { key: 'scissorKick' },
+          { key: 'thrust' }, { key: 'smash' }, { key: 'bash' },
+          { key: 'slash' }, { key: 'palm' }, { key: 'swing' },
+          { key: 'iai' }, { key: 'flailSwing' }, { key: 'gearPunch' },
+          { key: 'bolt' }, { key: 'shuriken' },
+          { key: 'block' }, { key: 'crouch' }, { key: 'roll' },
+        ]
+      },
+      {
+        key: 'locomotion',
+        transitions: [
+          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          ['idle', 'WALK', 'walk'], ['idle', 'APPROACH', 'approach'],
+          ['idle', 'RETREAT', 'retreat'], ['idle', 'JUMP', 'jump'],
+          ['walk', 'IDLE', 'idle'], ['walk', 'APPROACH', 'approach'],
+          ['walk', 'RETREAT', 'retreat'], ['walk', 'JUMP', 'jump'],
+          ['approach', 'IDLE', 'idle'], ['approach', 'WALK', 'walk'],
+          ['retreat', 'IDLE', 'idle'], ['retreat', 'WALK', 'walk'],
+          ['jump', 'LAND', 'idle'],
+        ],
+        states: [
+          { key: 'idle' }, { key: 'walk' }, { key: 'approach' },
+          { key: 'retreat' }, { key: 'jump' },
+        ]
+      },
+    ]
+  };
+
+  /**
+   * State 枚举值 → FSM 事件名称映射表
+   * 用于 setStateHFSM 将 State 值转换为 FsmProcess.dispatch() 的事件字符串
+   */
+  const STATE_EVENT_MAP: Partial<Record<State, string>> = {
+    hurtLight: 'HURT_LIGHT', hurtHeavy: 'HURT_HEAVY', hurtUp: 'HURT_UP',
+    hurtLeg: 'HURT_LEG', stumble: 'STUMBLE', down: 'KNOCK_DOWN', getup: 'GETUP',
+    jab: 'JAB', cross: 'CROSS', hook: 'HOOK', uppercut: 'UPPERCUT',
+    elbow: 'ELBOW', knee: 'KNEE', throw: 'THROW', counterStrike: 'COUNTER_STRIKE',
+    snapKick: 'SNAP_KICK', pushKick: 'PUSH_KICK', sideKick: 'SIDE_KICK',
+    roundKick: 'ROUND_KICK', axeKick: 'AXE_KICK', spinKick: 'SPIN_KICK',
+    flyKick: 'FLY_KICK', scissorKick: 'SCISSOR_KICK',
+    thrust: 'THRUST', smash: 'SMASH', bash: 'BASH', slash: 'SLASH',
+    palm: 'PALM', swing: 'SWING', iai: 'IAI', flailSwing: 'FLAIL_SWING',
+    gearPunch: 'GEAR_PUNCH', bolt: 'BOLT', shuriken: 'SHURIKEN',
+    block: 'BLOCK', crouch: 'CROUCH', roll: 'ROLL',
+    idle: 'IDLE', walk: 'WALK', approach: 'APPROACH', retreat: 'RETREAT', jump: 'JUMP',
+  };
+
   interface Fighter {
     x: number;
     facing: number;
     hp: number;
     maxHp: number;
     state: State;
+    /** @statewalker/fsm 分层状态机实例：管理 4 层嵌套状态（System/HitReaction/Combat/Locomotion） */
+    fsm: FsmProcess;
     clipT: number;
     clipDur: number;
     pose: Pose;
@@ -940,7 +2294,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     links: { a: string; b: string; len: number }[];
     getupFade: number;
     lastDecision: number;
-    emote: string | null;
     kb: number;
     /** 被击后的踉跄剩余时间 */
     stagger: number;
@@ -956,10 +2309,23 @@ export function initFightBand(opts: FightOptions = {}): void {
     cloth: Dangle;
     /** 动态件 B：小挂件末端（念珠/枪缨/弹药带），跟随摆动 */
     trinket: Dangle;
+    /** PD 控制器：程序化受击反应（null = 使用传统关键帧，非 null = 启用 PD 增强） */
+    pdController: PDController | null;
     /** 无敌帧剩余时间（闪避用） */
     invuln: number;
     minX: number;
     maxX: number;
+    /** 洋葱皮/鬼帧历史：用于显示姿态轨迹（调试用） */
+    poseHistory: PoseGhost[];
+    /* ---- 输入缓冲与帧数据系统字段 ---- */
+    /** 环形输入缓冲区：AI 决策先入缓冲，再按窗口消费，防止每帧反悔 */
+    inputBuffer: InputBuffer;
+    /** 当前招式的帧数据（出招时由 computeFrameData 填充） */
+    currentFrameData: FrameData | null;
+    /** 当前招式所处阶段：startup / active / recovery / none */
+    attackPhase: AttackPhase;
+    /** 决策历史（用于模式分析、调试和训练数据采集），最多保留 200 条 */
+    decisionHistory: DecisionRecord[];
   }
 
   interface Spark {
@@ -1021,10 +2387,468 @@ export function initFightBand(opts: FightOptions = {}): void {
     knock: number;
   }
   let projectiles: Projectile[] = [];
+
+  /* ============================================================
+   * 调试系统：命中盒计算 / 洋葱皮 / 帧步进 / HUD
+   * ============================================================ */
+
+  /** 帧步进控制状态 */
+  const frameStepCtrl: FrameStepControl = {
+    paused: false,
+    stepForward: false,
+    stepBackward: false,
+    speed: 1.0,
+    currentFrame: 0,
+    totalFrames: 0,
+  };
+
+  /**
+   * 计算当前斗士的活跃命中盒列表。
+   * 根据当前姿态、招式状态、clip 进度，实时生成所有应显示的命中盒。
+   * 这是调试系统的核心函数，所有命中盒可视化都依赖它。
+   */
+  const computeDebugHitboxes = (fighter: Fighter, joints: Record<keyof Joints, Pt>): DebugHitbox[] => {
+    const boxes: DebugHitbox[] = [];
+    const prog = fighter.clipDur > 0 ? fighter.clipT / fighter.clipDur : 1;
+    const atk = ATTACKS[fighter.state];
+    const s = fighter.scale;
+
+    // === 受击盒（Hurt - 蓝）：躯干 + 头部 ===
+    // 躯干受击盒：骨盆到头部之间的椭圆近似
+    const pelvis = joints.pelvis;
+    const chest = joints.chest;
+    const head = joints.head;
+    if (pelvis && chest && head) {
+      // 躯干盒（骨盆→胸）
+      const torsoCx = (pelvis.x + chest.x) / 2;
+      const torsoCy = (pelvis.y + chest.y) / 2;
+      const torsoW = Math.abs(chest.x - pelvis.x) + 12 * s;
+      const torsoH = Math.abs(chest.y - pelvis.y) + 8 * s;
+      boxes.push({
+        type: HitboxType.Hurt,
+        x: torsoCx - torsoW / 2, y: torsoCy - torsoH / 2,
+        w: torsoW, h: torsoH,
+        activeRange: [0, 1],
+        joint: 'chest',
+      });
+      // 头部盒
+      boxes.push({
+        type: HitboxType.Hurt,
+        cx: head.x, cy: head.y, r: L.headR * s,
+        activeRange: [0, 1],
+        joint: 'head',
+      });
+    }
+
+    // === 格挡盒（Guard - 绿）：格挡状态下扩大防御区域 ===
+    if (fighter.state === 'block' && fighter.guardBreak <= 0) {
+      if (chest && pelvis) {
+        // 格挡盒比受击盒稍大，前伸更多
+        const guardExtend = 8 * s * fighter.facing;
+        boxes.push({
+          type: HitboxType.Guard,
+          x: Math.min(pelvis.x, chest.x) - 6 * s + guardExtend,
+          y: pelvis.y - 4 * s,
+          w: Math.abs(chest.x - pelvis.x) + 20 * s,
+          h: Math.abs(chest.y - pelvis.y) + 16 * s,
+          activeRange: [0, 1],
+        });
+      }
+    }
+
+    // === 脆弱盒（Vulnerable - 黄）：破防/硬直状态下 ===
+    if (fighter.guardBreak > 0 || fighter.stun > 0.1 || fighter.stagger > 0.2) {
+      if (chest && pelvis) {
+        // 脆弱盒比普通受击盒更大
+        const vulnMul = 1 + (fighter.guardBreak > 0 ? 0.4 : 0.2);
+        boxes.push({
+          type: HitboxType.Vulnerable,
+          x: (pelvis.x + chest.x) / 2 - 14 * s * vulnMul,
+          y: (pelvis.y + chest.y) / 2 - 20 * s * vulnMul,
+          w: 28 * s * vulnMul,
+          h: 40 * s * vulnMul,
+          activeRange: [0, 1],
+        });
+      }
+    }
+
+    // === 攻击盒（Attack - 红）：当前招式的攻击判定区域 ===
+    if (atk && fighter.state !== 'down' && fighter.state !== 'getup') {
+      for (const h of atk.hits) {
+        // 检查是否在激活范围内（命中帧前后 15% 的窗口内显示）
+        const windowStart = h.at - 0.15;
+        const windowEnd = h.at + 0.15;
+        if (prog >= windowStart && prog <= windowEnd) {
+          const part = (h.part ?? atk.part) as keyof Joints;
+          const tipLen = (h as any).tipLen ?? 0;
+          const ap = attackPoint(fighter, part as StrikePart, tipLen);
+          // 攻击盒大小根据 reach 值缩放
+          const boxR = (6 + h.reach * 5) * s;
+          boxes.push({
+            type: HitboxType.Attack,
+            cx: ap.x, cy: ap.y, r: boxR,
+            activeRange: [windowStart, windowEnd],
+            joint: part,
+          });
+        }
+      }
+    }
+
+    // === 投射物盒（Projection - 青）=== （如果有弹道在飞行中）
+    const myProjectiles = projectiles.filter(p => p.owner === fighters.indexOf(fighter));
+    for (const proj of myProjectiles) {
+      boxes.push({
+        type: HitboxType.Projection,
+        cx: proj.x, cy: proj.y, r: 5 * s,
+        activeRange: [0, 1],
+      });
+    }
+
+    // === 传感器盒（Sensor - 紫）：地面检测 ===
+    if (joints.footB && joints.footF) {
+      // 地面传感器：检测双脚是否着地
+      const groundY_val = groundY();
+      for (const footKey of ['footB', 'footF'] as (keyof Joints)[]) {
+        const foot = joints[footKey];
+        if (foot && foot.y >= groundY_val - 4) {
+          boxes.push({
+            type: HitboxType.Sensor,
+            cx: foot.x, cy: groundY_val - 2,
+            r: 4 * s,
+            activeRange: [0, 1],
+            joint: footKey,
+          });
+        }
+      }
+    }
+
+    return boxes;
+  };
+
+  /**
+   * 更新洋葱皮/鬼帧历史记录。
+   * 每帧调用一次，将当前姿态存入历史队列，并淡出/移除旧帧。
+   * 性能注意：仅在 debugOptions.onionSkin 为 true 时才应调用此函数。
+   */
+  const updateOnionSkin = (fighter: Fighter) => {
+    const cfg = debugOptions.onionConfig ?? { maxGhosts: 5, fadeRate: 0.03 };
+    // 获取当前关节世界坐标
+    let joints: Record<keyof Joints, Pt>;
+    if (fighter.state === 'down' && fighter.ragdoll) {
+      joints = fighter.ragdoll as unknown as Record<keyof Joints, Pt>;
+    } else {
+      joints = place(fighter).world;
+    }
+
+    // 添加新帧（初始完全不透明）
+    fighter.poseHistory.push({
+      joints: { ...joints } as any,
+      t: elapsed,
+      alpha: 1.0,
+    });
+
+    // 淡出所有历史帧
+    for (let i = 0; i < fighter.poseHistory.length; i++) {
+      fighter.poseHistory[i].alpha -= cfg.fadeRate;
+    }
+
+    // 移除完全透明的历史帧，并限制最大数量
+    fighter.poseHistory = fighter.poseHistory.filter(g => g.alpha > 0.01);
+    if (fighter.poseHistory.length > cfg.maxGhosts) {
+      fighter.poseHistory = fighter.poseHistory.slice(-cfg.maxGhosts);
+    }
+  };
+
+  /**
+   * 绘制洋葱皮/鬼帧叠加层。
+   * 在角色身后绘制半透明的姿态历史轨迹。
+   */
+  const drawOnionSkin = (ctx: CanvasRenderingContext2D, fighter: Fighter) => {
+    const cfg = debugOptions.onionConfig ?? { maxGhosts: 5, fadeRate: 0.03, color: 'rgba(100,180,255,ALPHA)' };
+    const baseColor = cfg.color.replace('ALPHA', '1'); // 用于描边
+
+    for (const ghost of fighter.poseHistory) {
+      const alpha = ghost.alpha * 0.35; // 整体降低最大不透明度
+      ctx.globalAlpha = alpha;
+
+      // 绘制鬼帧骨骼轮廓（简化版：只画主要骨连线）
+      const bonePairs: [keyof Joints, keyof Joints][] = [
+        ['pelvis', 'chest'], ['chest', 'head'],
+        ['shoulderB', 'elbowB'], ['elbowB', 'handB'],
+        ['shoulderF', 'elbowF'], ['elbowF', 'handF'],
+        ['hipB', 'kneeB'], ['kneeB', 'footB'],
+        ['hipF', 'kneeF'], ['kneeF', 'footF'],
+      ];
+
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 1;
+      for (const [a, b] of bonePairs) {
+        const pa = ghost.joints[a];
+        const pb = ghost.joints[b];
+        if (!pa || !pb) continue;
+        ctx.beginPath();
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+
+  /**
+   * 绘制 6 色命中盒叠加层。
+   * 遵循 SF6/GGPO 工具标准配色方案。
+   */
+  const drawDebugHitboxes = (ctx: CanvasRenderingContext2D, boxes: DebugHitbox[]) => {
+    for (const box of boxes) {
+      const colors = HITBOX_COLORS[box.type];
+      ctx.fillStyle = colors.fill;
+      ctx.strokeStyle = colors.stroke;
+      ctx.lineWidth = 1.8;
+
+      if (box.cx !== undefined && box.cy !== undefined && box.r !== undefined) {
+        // 圆形命中盒
+        ctx.beginPath();
+        ctx.arc(box.cx, box.cy, box.r, 0, TAU);
+        ctx.fill();
+        ctx.stroke();
+
+        // 类型标签
+        if (debugOptions.hitboxDetail !== 'simple') {
+          ctx.font = 'bold 9px ui-monospace, monospace';
+          ctx.fillStyle = colors.stroke;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(HITBOX_LABELS[box.type], box.cx, box.cy - box.r - 2);
+        }
+      } else if (box.x !== undefined && box.y !== undefined && box.w !== undefined && box.h !== undefined) {
+        // 矩形命中盒
+        ctx.beginPath();
+        ctx.rect(box.x, box.y, box.w, box.h);
+        ctx.fill();
+        ctx.stroke();
+
+        // 类型标签
+        if (debugOptions.hitboxDetail !== 'simple') {
+          ctx.font = 'bold 9px ui-monospace, monospace';
+          ctx.fillStyle = colors.stroke;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(HITBOX_LABELS[box.type], box.x + 2, box.y - 2);
+        }
+      }
+    }
+  };
+
+  /**
+   * 绘制 SF6 风格调试 HUD。
+   * 显示双方斗士的状态、HP、位置、帧数据、连招信息等。
+   * 布局模仿 SF6 训练模式 HUD：
+   *   ┌─────────────────────────────┐
+   *   │ P1 [name]     HP: 100/100  │
+   *   │ State: idle    Frame: 042  │
+   *   │ Pos: (320, 420) Facing: →  │
+   *   │ Combo: 3 hits  Damage: 45  │
+   *   ├─────────────────────────────┤
+   *   │ P2 [name]     HP: 87/100   │
+   *   │ ...
+   */
+  const drawSF6HUD = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
+    const PAD = 10;
+    const LINE_H = 17;
+    const BOX_W = 260;
+    const BOX_H = fighters.length * (LINE_H * 5 + 12) + 16;
+
+    // 背景
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,8,6,0.85)';
+    ctx.fillRect(PAD, PAD, BOX_W, BOX_H);
+    ctx.strokeStyle = 'rgba(255,200,100,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(PAD, PAD, BOX_W, BOX_H);
+
+    // 标题栏
+    ctx.fillStyle = 'rgba(255,200,100,0.9)';
+    ctx.font = 'bold 11px ui-monospace, "Cascadia Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('⬡ DEBUG HUD  [SF6 Style]', PAD + 8, PAD + 5);
+
+    // 分隔线
+    ctx.beginPath();
+    ctx.moveTo(PAD, PAD + 22);
+    ctx.lineTo(PAD + BOX_W, PAD + 22);
+    ctx.strokeStyle = 'rgba(255,200,100,0.25)';
+    ctx.stroke();
+
+    let y = PAD + 28;
+
+    for (let fi = 0; fi < fighters.length; fi++) {
+      const f = fighters[fi];
+      const prog = f.clipDur > 0 ? (f.clipT / f.clipDur * 100).toFixed(1) : '-';
+
+      // 角色名 + HP 条
+      ctx.fillStyle = f.skin.body;
+      ctx.font = 'bold 12px ui-sans-serif, system-ui, sans-serif';
+      ctx.fillText(`P${fi + 1} ${f.name}`, PAD + 8, y);
+
+      // HP 数值
+      ctx.fillStyle = '#E0E0E0';
+      ctx.font = '11px ui-monospace, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`HP:${Math.round(f.hp)}/${f.maxHp}`, PAD + BOX_W - 8, y);
+      ctx.textAlign = 'left';
+
+      // HP 条背景
+      y += LINE_H;
+      const hpBarW = BOX_W - 16;
+      const hpBarH = 8;
+      const hpRatio = Math.max(0, f.hp / f.maxHp);
+      ctx.fillStyle = 'rgba(40,35,30,0.8)';
+      ctx.fillRect(PAD + 8, y, hpBarW, hpBarH);
+      // HP 条填充（颜色随血量变化）
+      const hpColor = hpRatio > 0.5 ? '#4CAF50' : hpRatio > 0.25 ? '#FF9800' : '#F44336';
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(PAD + 8, y, hpBarW * hpRatio, hpBarH);
+
+      // 状态行
+      y += LINE_H + 2;
+      ctx.fillStyle = '#C8B896';
+      ctx.font = '11px ui-monospace, monospace';
+      ctx.fillText(`State: ${f.state.padEnd(14)} Frame: ${String(frameStepCtrl.currentFrame).padStart(4, ' ')}`, PAD + 8, y);
+
+      // 位置 + 面向
+      y += LINE_H;
+      ctx.fillStyle = '#9A8A6A';
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText(
+        `Pos: (${f.x.toFixed(0)}, ${groundY().toFixed(0)})  Face:${f.facing > 0 ? '→' : '←'}  Scale:${f.scale.toFixed(2)}`,
+        PAD + 8, y
+      );
+
+      // 架势 + 硬直
+      y += LINE_H;
+      const guardStr = `Guard:${f.guard.toFixed(0)}%${f.guardBreak > 0 ? ' [BREAK!]' : ''}`;
+      const stunStr = f.stun > 0 ? `  Stun:${f.stun.toFixed(2)}s` : '';
+      ctx.fillText(`${guardStr}${stunStr}`, PAD + 8, y);
+
+      // 连招信息
+      y += LINE_H;
+      if (f.comboSteps && f.comboSteps.length > 0) {
+        const comboStr = f.comboSteps.map((s, i) =>
+          i === f.comboIndex ? `[${s}]` : s
+        ).join(' → ');
+        ctx.fillStyle = '#FFD54F';
+        ctx.fillText(`Combo: ${comboStr}`, PAD + 8, y);
+      } else {
+        ctx.fillStyle = '#666';
+        ctx.fillText('Combo: -', PAD + 8, y);
+      }
+
+      y += 10; // 角色间距
+    }
+
+    // 底部：帧步进状态 + 控制提示
+    if (debugOptions.frameStep) {
+      y += 4;
+      ctx.beginPath();
+      ctx.moveTo(PAD, y);
+      ctx.lineTo(PAD + BOX_W, y);
+      ctx.strokeStyle = 'rgba(255,200,100,0.2)';
+      ctx.stroke();
+      y += 6;
+
+      ctx.fillStyle = frameStepCtrl.paused ? '#FF5722' : '#4CAF50';
+      ctx.font = 'bold 10px ui-monospace, monospace';
+      ctx.fillText(
+        `${frameStepCtrl.paused ? '⏸ PAUSED' : '▶ PLAY'}  Speed:${frameStepCtrl.speed.toFixed(1)}x  Frame:${frameStepCtrl.currentFrame}/${frameStepCtrl.totalFrames}`,
+        PAD + 8, y
+      );
+      y += LINE_H;
+      ctx.fillStyle = '#666';
+      ctx.font = '9px ui-monospace, monospace';
+      ctx.fillText('[Pause] .→  ,←  [] speed  [Space] toggle pause', PAD + 8, y);
+    }
+
+    ctx.restore();
+  };
+
+  /**
+   * 设置帧步进键盘监听器。
+   * 快捷键：
+   *   Pause/Break 或 Space: 暂停/继续
+   *   . (period):           单帧前进
+   *   , (comma):            单帧后退
+   *   [:                    减速
+   *   ]:                    加速
+   */
+  const setupFrameStepKeys = () => {
+    const opt = { signal: keyAbort.signal };
+    window.addEventListener('keydown', (e) => {
+      // 仅在帧步进模式下响应
+      if (!debugOptions.frameStep) return;
+
+      switch (e.code) {
+        case 'Pause':
+          frameStepCtrl.paused = !frameStepCtrl.paused;
+          e.preventDefault();
+          break;
+        case 'Period': // . → 前进一帧
+          if (frameStepCtrl.paused) {
+            frameStepCtrl.stepForward = true;
+          }
+          e.preventDefault();
+          break;
+        case 'Comma': // , ← 后退一帧
+          if (frameStepCtrl.paused) {
+            frameStepCtrl.stepBackward = true;
+          }
+          e.preventDefault();
+          break;
+        case 'BracketLeft': // [ 减速
+          frameStepCtrl.speed = Math.max(0.1, frameStepCtrl.speed - 0.25);
+          e.preventDefault();
+          break;
+        case 'BracketRight': // ] 加速
+          frameStepCtrl.speed = Math.min(5.0, frameStepCtrl.speed + 0.25);
+          e.preventDefault();
+          break;
+        case 'Space': // 暂停切换（不在手动模式下时生效）
+          if (!opts.manual) {
+            frameStepCtrl.paused = !frameStepCtrl.paused;
+            e.preventDefault();
+          }
+          break;
+      }
+    }, opt);
+  };
+
+  // 如果启用了帧步进模式，注册键盘监听
+  if (debugOptions.frameStep) {
+    setupFrameStepKeys();
+  }
+
   /** 大规模检测用计数器（引擎内部统计，比从外面看状态可靠） */
   const stats = { attacks: 0, hits: 0, whiffs: 0, blocks: 0, breaks: 0, downs: 0, nonlethalDowns: 0, lethalDowns: 0, deaths: 0 };
-  /** 决策落盘：输入观测 + 实际动作，行为克隆 / 复盘直接可用（环形保留最近 4000 条） */
-  const trace: { t: number; who: number; build: string; snap: FightSnapshot; decision: string }[] = [];
+  /** 决策落盘：输入观测 + 实际动作 + 增强元数据，行为克隆 / 复盘直接可用（环形保留最近 4000 条） */
+  const trace: {
+    t: number;
+    who: number;
+    build: string;
+    snap: FightSnapshot;
+    decision: string;
+    /** 置信度：0~1，越高表示 AI 对该决策越确定 */
+    confidence: number;
+    /** 决策来源：direct=直接决策 / buffer=缓冲区消费 / react=投射物反应 / buffer-evade=闪避消费等 */
+    source: string;
+    /** 决策时自身的 HP 和 Guard 状态 */
+    hp: number;
+    guard: number;
+    /** 决策时是否在连招中 */
+    inCombo: boolean;
+    /** 当前的 intentLock 剩余时间（承诺窗口状态） */
+    intentLockRemaining: number;
+  }[] = [];
   let elapsed = 0;
   /** 手动模式按键表（AbortController 便于 destroy 时一次性移除监听） */
   const keys = new Set<string>();
@@ -1050,6 +2874,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     hp: 100,
     maxHp: 100,
     state: 'idle',
+    fsm: new FsmProcess(fighterFsmConfig),
     clipT: 0,
     clipDur: CLIPS.idle.dur,
     pose: { ...IDLE_A },
@@ -1066,9 +2891,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     build: (i % 2 === 0 ? 'swordsman' : 'ranger') as Gear,
     cloth: { x: NaN, y: NaN, px: 0, py: 0 },
     trinket: { x: NaN, y: NaN, px: 0, py: 0 },
+    pdController: null,
     aggression: rand(0.45, 0.95),
     guardChance: rand(0.35, 0.75),
-    preferDist: rand(29, 34),
+    // 偏好距离：由行为 archetype 自动计算（zoner 远 / rusher 近 / 其余中距），
+    // 替代原来手写的 rand(34, 42)，让每个流派的站位更有区分度
+    preferDist: computePreferDist(GEAR_SPEC[(i % 2 === 0 ? 'swordsman' : 'ranger') as Gear].behavior),
     intentLock: 0,
     perceiveLag: rand(0.06, 0.2),
     noise: 0.5,
@@ -1095,7 +2923,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     links: [],
     getupFade: 0,
     lastDecision: 0,
-    emote: null,
     kb: 0,
     stagger: 0,
     knockdown: false,
@@ -1104,6 +2931,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     invuln: 0,
     minX: 20,
     maxX: 9999,
+    poseHistory: [],
+    /* ---- 输入缓冲与帧数据系统初始化 ---- */
+    inputBuffer: new InputBuffer(),
+    currentFrameData: null,
+    attackPhase: 'none' as AttackPhase,
+    decisionHistory: [],
   });
 
   const makeFighters = (count: number) => {
@@ -1116,6 +2949,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (opts.params?.guardChance) f.guardChance = opts.params.guardChance;
       if (opts.params?.hp) { f.maxHp = opts.params.hp; f.hp = opts.params.hp; }
       fighters.push(f);
+      // 启动 FSM：进入初始状态（system.idle → hitReaction.idle → combat.idle → locomotion.idle）
+      f.fsm.dispatch('').catch(() => {});
     }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
   };
@@ -1267,7 +3102,41 @@ export function initFightBand(opts: FightOptions = {}): void {
   const FOCAL = 320;
 
   const place = (f: Fighter) => {
-    const j = fk(f.pose, f.facing < 0);
+    let pose = f.pose;
+
+    /* ---- Foot IK：蹲下/受击时保持脚掌贴地（可选增强） ---- */
+    // 当角色下蹲（lift <= 0 且 legLB < 0 表示屈膝）时，
+    // 用 Two-Bone IK 调整腿部角度使脚不穿透地面
+    if (f.pose.lift <= 0 && (f.pose.legLB < -0.3 || f.pose.legLF < -0.3)) {
+      const jRaw = fk(pose, f.facing < 0);
+      // 找到位置更低的脚（支撑脚），计算它离地面的距离
+      const supportFoot = jRaw.footF.y >= jRaw.footB.y ? 'footF' : 'footB';
+      const supportHip = supportFoot === 'footF' ? 'hipF' : 'hipB';
+      const supportKnee = supportFoot === 'footF' ? 'kneeF' : 'kneeB';
+      // 目标：脚应该在地面高度（y = groundY() - lift 偏移）
+      // IK 在局部坐标空间工作，地面相对于骨盆的位置
+      const groundLocalY = 0; // 简化：假设地面在骨盆下方约 thigh + shin 的距离处
+      const hip = jRaw[supportHip as keyof Joints];
+      const footTarget: Pt = { x: jRaw[supportFoot as keyof Joints].x, y: Math.max(jRaw[supportFoot as keyof Joints].y, hip.y + L.thigh + L.shin - 1), z: 0 };
+      // 只有当脚明显低于自然伸展位置时才应用 IK
+      if (footTarget.y > jRaw[supportFoot as keyof Joints].y + 0.5) {
+        const ik = twoBoneIK(hip, footTarget, L.thigh, L.shin, 1);
+        if (ik.reachable) {
+          // 创建姿态副本，修改对应腿的角度
+          const modPose = { ...pose };
+          if (supportFoot === 'footF') {
+            modPose.legUF = ik.angle1;
+            modPose.legLF = ik.angle2 - Math.PI; // 转换为相对角度
+          } else {
+            modPose.legUB = ik.angle1;
+            modPose.legLB = ik.angle2 - Math.PI;
+          }
+          pose = modPose;
+        }
+      }
+    }
+
+    const j = fk(pose, f.facing < 0);
     const lowFeet = Math.max(j.footB.y, j.footF.y);
     const dy = groundY() - lowFeet - f.pose.lift - (1 - f.scale) * 20;
     const yaw = f.pose.yaw || 0;
@@ -1321,6 +3190,72 @@ export function initFightBand(opts: FightOptions = {}): void {
     return hand;
   };
 
+  /* ============================================================
+   * 统一距离计算模块
+   * ------------------------------------------------------------
+   * 问题：原来有三套互不兼容的距离尺度：
+   *   ① contactCheck 用「攻击部位↔躯干线段」的最短距离（FK 关节间距）
+   *   ② threatRange = reachOf() 用「骨盆中心距 + 9*reach*scale」
+   *   ③ preferDist = 手写的 28~46 纯中心距
+   * 导致 AI 以为"安全"其实站在对手枪口上，或反向挥空。
+   *
+   * 统一方案：所有距离都以**双方骨盆（中心点）距离**为基准，
+   * 通过固定换算系数转换到「接触距离 / 威胁距离 / 偏好距离」。
+   * ============================================================ */
+
+  /** 距离类型枚举 */
+  enum DistanceType {
+    /** 接触距离：攻击部位真正碰到目标的容差（原 contactCheck 的 7*reach*scale） */
+    CONTACT = 'contact',
+    /** 威胁距离：招式的最大有效命中半径（原 reachOf 的 9*reach*scale） */
+    THREAT = 'threat',
+    /** 偏好距离：AI 想要站位的中心距（原 preferDist） */
+    PREFER = 'prefer',
+  }
+
+  /** 各距离类型的换算配置（系数 × reach × scale） */
+  const DISTANCE_CONFIG = {
+    /** 接触判定容差系数 —— 命中盒约等于一个拳头宽度 */
+    [DistanceType.CONTACT]: { coeff: 7, description: '接触判定' },
+    /** 威胁半径系数 —— 比 contact 宽一点，用于 AI 预判"这招够不够得着" */
+    [DistanceType.THREAT]: { coeff: 9, description: '威胁半径' },
+  } as const;
+
+  /**
+   * 统一距离计算：基于骨盆中心距，换算到指定类型
+   * @param centerDist 双方骨盆（中心点）的像素距离
+   * @param type 目标距离类型
+   * @param reach 招式的 reach 值（ATTACKS[].reach，通常 0.8~1.75）
+   * @param scale 目标的体型缩放（Fighter.scale，通常 0.94~1.06）
+   * @returns 该类型对应的距离阈值
+   */
+  const computeDistance = (
+    centerDist: number,
+    type: DistanceType.CONTACT | DistanceType.THREAT,
+    reach: number,
+    scale: number,
+  ): number => {
+    const cfg = DISTANCE_CONFIG[type];
+    return cfg.coeff * reach * scale;
+  };
+
+  /**
+   * 根据行为 archetype 自动计算偏好距离
+   * 替代 ROSTER 和 mk() 里手写的 preferDist 数值
+   */
+  const computePreferDist = (behavior: GearSpec['behavior']): number => {
+    const ranges: Record<GearSpec['behavior'], [number, number]> = {
+      zoner:     [40, 48],  // 远程风筝流：站最远，用投射物/长柄牵制
+      rusher:    [28, 34],  // 突进贴脸流：最近，双刀/战斧狂战士
+      turtle:    [34, 40],  // 防守反击流：中近距，盾卫等机会
+      punisher:  [32, 38],  // 惩戒流：中距，等破绽再打
+      trickster: [30, 36],  // 巧变流：中近距，忍者/醉拳游走
+      brawler:   [28, 32],  // 肉搏流：最近，武僧/链锤贴身压制
+    };
+    const [lo, hi] = ranges[behavior];
+    return rand(lo, hi);
+  };
+
   const contactCheck = (attacker: Fighter, target: Fighter, reachMul: number, part: StrikePart, tipLen = 0): { hit: boolean; at: Pt } => {
     const tw = place(target).world;
     const fist = attackPoint(attacker, part, tipLen);
@@ -1337,24 +3272,88 @@ export function initFightBand(opts: FightOptions = {}): void {
     const cx = a.x + vx * t;
     const cy = a.y + vy * t;
     const d = Math.hypot(fist.x - cx, fist.y - cy);
-    return { hit: d <= 9 * fistReach * target.scale, at: { x: cx, y: cy } };
+    // 命中容差：使用统一距离系统（DistanceType.CONTACT → coeff=7）
+    // reach 通常在 0.8~1.2，scale≈1.15，所以实际容差约 6.4~9.7px，接近一个拳头的宽度
+    const threshold = computeDistance(d, DistanceType.CONTACT, fistReach, target.scale);
+    return { hit: d <= threshold, at: { x: cx, y: cy } };
   };
 
-  /* ---------- 状态切换 ---------- */
+  /* ---------- 状态切换（HFSM 分层状态机） ---------- */
 
-  const setState = (f: Fighter, s: State, dur?: number) => {
+  /**
+   * 分层状态机核心函数：setStateHFSM（基于 @statewalker/fsm）
+   *
+   * 实现逻辑：
+   * 1. 同态早退优化（避免反复 setState('idle') 重置动画）
+   * 2. 将 State 枚举映射为 FSM 事件，通过 dispatch 驱动 @statewalker/fsm 状态转换
+   * 3. 同步执行所有状态副作用（clipT、clipDur、hitDone 等）
+   * 4. 异步派发 FSM 事件（fire-and-forget，不 await）
+   *
+   * @param f      目标角色
+   * @param newState 目标状态
+   * @param dur     可选的动画持续时间
+   * @param options 选项
+   * @returns 是否成功执行了状态转换
+   */
+  const setStateHFSM = (
+    f: Fighter,
+    newState: State,
+    dur?: number,
+    options?: {
+      force?: boolean;        // 强制转换（用于受击等不可拒绝的情况）
+      cancelType?: string;    // 取消类型（保留接口兼容）
+      source?: string;        // 调用来源（日志用）
+    },
+  ): boolean => {
+    const { force = false, source = 'unknown' } = options ?? {};
+
     // 同态早退：AI 每 0.1s 重决策时会反复 setState('idle'/'block')，
-    // 原来每次都把 clipT 倒回 0，待机动画永远停在第 0 帧 = 看着像卡住（idle 占比虚高的根因），
-    // 还会误清 pendingCombo。状态没变就不要重置任何东西。
-    if (f.state === s && (dur === undefined || dur === f.clipDur)) return;
-    // 起跳同时进入闪避无敌帧
-    if (s === 'jump') f.invuln = 0.34;
-    f.state = s;
+    // 原来每次都把 clipT 倒回 0，待机动画永远停在第 0 帧 = 看着像卡住
+    if (f.state === newState && (dur === undefined || dur === f.clipDur)) return false;
+
+    // 查找对应 FSM 事件
+    const event = STATE_EVENT_MAP[newState];
+    if (!event && !force) {
+      // 无映射事件且非强制 → 不合法转换，静默拒绝（向后兼容）
+      return false;
+    }
+
+    // ===== 执行状态转换副作用 =====
+
+    // 起跳同时进入闪避无敌帧（保留原有行为）
+    if (newState === 'jump') f.invuln = 0.34;
+
+    // 更新扁平 state（向后兼容 — 所有读取 f.state 的代码不受影响）
+    f.state = newState;
     f.clipT = 0;
-    f.clipDur = dur ?? CLIPS[s]?.dur ?? 0.3;
+    f.clipDur = dur ?? CLIPS[newState]?.dur ?? 0.3;
     f.hitDone = [];
-    f.landedHit = false; // 新的一招：还没打到人，用于挥空惩罚
-    f.pendingCombo = null; // 状态一变，待接的连招就作废（被打断 / 被菜单打岔）
+    f.landedHit = false;
+    f.pendingCombo = null;
+
+    // 通过 FSM 引擎派发事件（异步 fire-and-forget）
+    // FSM 层负责跟踪嵌套状态层级，状态副作用已同步完成
+    if (event && f.fsm) {
+      f.fsm.dispatch(event).catch((err: Error) => {
+        // FSM 转换失败时静默处理（保持向后兼容）
+        if (source !== 'unknown') {
+          console.warn(`[HFSM] Transition failed: ${f.state} --[${event}]--> ?`, err.message);
+        }
+      });
+    }
+
+    return true;
+  };
+
+  /**
+   * 向后兼容的 setState 包装器：
+   * 所有原有调用点无需修改，内部委托给 setStateHFSM
+   *
+   * 保持与原 setState 完全相同的签名和外部行为。
+   * 新代码应优先使用 setStateHFSM 以获得完整的 HFSM 能力。
+   */
+  const setState = (f: Fighter, s: State, dur?: number) => {
+    setStateHFSM(f, s, dur, { source: 'legacy-setState' });
   };
 
   const startRagdoll = (f: Fighter, lethal = f.hp <= 0) => {
@@ -1396,9 +3395,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /* ---------- 决策 ---------- */
 
-  /** 招式的起手/命中/收招节奏（片段归一化进度） */
   /** 每招的真实命中距离（双方中心距，像素）：用骨骼几何现场标定并缓存。
-   *  与 contactCheck 完全同源 = 出招部位的世界坐标 + 9*reach*scale 的判定容差。
+   *  与 contactCheck 完全同源 = 出招部位的世界坐标 + 统一距离系统(DistanceType.THREAT, coeff=9)。
    *  原来的 threatRange = 36*reach 是拍脑袋常数，和实际命中判定对不上，
    *  于是 AI 以为"我在安全距离"其实一直站在对手枪口上（也会反向挥空）。 */
   const reachCache: Record<string, number> = {};
@@ -1419,7 +3417,11 @@ export function initFightBand(opts: FightOptions = {}): void {
     for (const h of a.hits) {
       probe.pose = sampleClip(clip, h.at);
       const part = place(probe).world[(h.part ?? a.part) as keyof Joints];
-      if (part) best = Math.max(best, part.x + 9 * h.reach * probe.scale);
+      if (part) {
+        // 使用统一距离系统（DistanceType.THREAT → coeff=9），与 contactCheck 的 coeff=7 形成明确层级
+        const threatExtension = computeDistance(0, DistanceType.THREAT, h.reach, probe.scale);
+        best = Math.max(best, part.x + threatExtension);
+      }
     }
     probe.x = sx;
     probe.pose = sp;
@@ -1466,10 +3468,10 @@ export function initFightBand(opts: FightOptions = {}): void {
         /** 对手是否正处于破防硬直（此时挨打更疼） */
         guardBreak: (opp?.guardBreak ?? 0) > 0,
       },
-      // 朝我飞来的投射物，按到达时间排序，最近的在前
+      // 朝我飞来的投射物，按到达时间排序，最近的在前（含 kind 供 AI 区分 bolt/shuriken）
       incoming: projectiles
         .filter((p) => p.owner !== fighters.indexOf(f) && Math.sign(p.vx) === Math.sign(f.x - p.x))
-        .map((p) => ({ x: p.x, y: p.y, vx: p.vx, eta: Math.abs(f.x - p.x) / Math.max(1, Math.abs(p.vx)) }))
+        .map((p) => ({ x: p.x, y: p.y, vx: p.vx, eta: Math.abs(f.x - p.x) / Math.max(1, Math.abs(p.vx)), kind: p.kind }))
         .sort((a, b) => a.eta - b.eta)
         .slice(0, 3),
     };
@@ -1512,37 +3514,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     return p > 0.25 && p < 0.72;
   };
 
-  /** 招式元数据：起手/收招（秒）+ 战术标签 */
-  const MOVE_META: Record<string, { startup: number; recovery: number; breakGuard?: boolean; finisher?: boolean; fast?: boolean; counter?: boolean }> = {
-    jab: { startup: 0.18, recovery: 0.2, fast: true, counter: true },
-    cross: { startup: 0.3, recovery: 0.3 },
-    hook: { startup: 0.28, recovery: 0.25 },
-    uppercut: { startup: 0.32, recovery: 0.28 },
-    elbow: { startup: 0.22, recovery: 0.2, counter: true },
-    snapKick: { startup: 0.22, recovery: 0.2, fast: true, counter: true },
-    pushKick: { startup: 0.28, recovery: 0.3, breakGuard: true },
-    sideKick: { startup: 0.32, recovery: 0.32, finisher: true },
-    roundKick: { startup: 0.3, recovery: 0.3 },
-    axeKick: { startup: 0.34, recovery: 0.32, breakGuard: true },
-    spinKick: { startup: 0.5, recovery: 0.4, finisher: true },
-    flyKick: { startup: 0.4, recovery: 0.35, finisher: true },
-    scissorKick: { startup: 0.3, recovery: 0.3 },
-    /* ===== 武器专属招式元数据 ===== */
-    thrust: { startup: 0.22, recovery: 0.2, counter: true },
-    smash: { startup: 0.32, recovery: 0.3, breakGuard: true, finisher: true },
-    bash: { startup: 0.2, recovery: 0.16, breakGuard: true },
-    slash: { startup: 0.16, recovery: 0.2, fast: true },
-    palm: { startup: 0.1, recovery: 0.1, fast: true, counter: true },
-    swing: { startup: 0.26, recovery: 0.26, breakGuard: true },
-    iai: { startup: 0.3, recovery: 0.2, finisher: true, counter: true, fast: true },
-    flailSwing: { startup: 0.34, recovery: 0.3, breakGuard: true, finisher: true },
-    gearPunch: { startup: 0.24, recovery: 0.24, breakGuard: true },
-    bolt: { startup: 0.2, recovery: 0.18, fast: true },
-    shuriken: { startup: 0.16, recovery: 0.14, fast: true },
-  knee: { startup: 0.2, recovery: 0.22, breakGuard: true },
-  throw: { startup: 0.34, recovery: 0.4, finisher: true },
-  counterStrike: { startup: 0.14, recovery: 0.18, fast: true, counter: true },
-  };
+  /** 招式元数据已提升为模块级统一系统（MOVE_META / _MOVE_META_FULL），
+   *  此处不再重复定义。pickAttack 等函数直接使用外层 MOVE_META。
+   * 旧的手动对齐表已被 buildMoveMeta() 自动聚合替代。 */
 
   /** 招式层：按距离筛选 + 效用函数打分 + 加权随机 */
   const pickAttack = (f: Fighter, d: number, opp: FightSnapshot['opponent'] | null): Decision => {
@@ -1616,11 +3590,15 @@ export function initFightBand(opts: FightOptions = {}): void {
     // 改成低架势时更倾向于后撤、但仍可能举盾赌一把，GUARD BREAK 才真的会发生
     const guardUp = (v: number) => (canBlock && (f.guard > 18 || random() < 0.55) ? 'block' : 'retreat');
 
-    /* ⓪·五 看见箭/星镖朝我飞来：跳起躲或举盾，不再站着硬吃（snapshot.incoming） */
+    /* ⓪·五 看见箭/星镖朝我飞来：跳起躲或举盾，不再站着硬吃（snapshot.incoming）
+     *  bolt 高伤慢速 → 优先举盾；shuriken 低伤高速 → 优先跳跃闪避 */
     const inc = snap.incoming[0];
     if (inc && inc.eta < 0.34) {
-      if (canBlock && random() < 0.5) return 'block';
-      return 'jump';
+      // bolt 伤害高（13~20）→ 更倾向举盾抵消；shuriken 伤害低（8~13）且更快 → 跳跃更划算
+      if (inc.kind === 'bolt' && canBlock && random() < 0.65) return 'block';
+      if (inc.kind === 'shuriken' && random() < 0.6) return 'jump';
+      // 兜底：按原逻辑随机选
+      return random() < 0.5 ? 'block' : 'jump';
     }
 
     /* ⓪ 被压到边角：意识到危险 → 跳过对手头顶换边脱困 */
@@ -1858,8 +3836,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     if (f.state === 'jump' || opp.state === 'jump') return;
     // 出招 / 倒地时放宽到「不重叠」即可（推得太狠会卡住突进招，让它打不到）
     const fighting = ATTACKS[f.state] || ATTACKS[opp.state] || f.state === 'down' || f.state === 'stumble';
-    // 站架时保持一个看得出来的间距，别两个人贴在一起
-    const minGap = (fighting ? 14 : 21) * Math.max(f.scale, opp.scale);
+    // 站架/走位时保持更明显的间距：原来 21px 太近，两个人几乎贴在一起。
+    // 加到 26px 让角色之间有清晰的"间合感"，符合武打的视觉距离。
+    const minGap = (fighting ? 16 : 26) * Math.max(f.scale, opp.scale);
     const dx = f.x - opp.x;
     const ad = Math.abs(dx);
     if (ad < minGap) {
@@ -1994,6 +3973,40 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   const update = (dt: number) => {
     elapsed += dt;
+
+    // ── 帧步进控制：暂停时跳过物理/状态更新 ──
+    if (debugOptions.frameStep && frameStepCtrl.paused) {
+      // 暂停状态下：仅处理单帧步进请求，不更新正常时间流
+      if (frameStepCtrl.stepForward) {
+        frameStepCtrl.stepForward = false;
+        // 执行一帧的更新（用固定小 dt）
+        const stepDt = 1 / 60;
+        elapsed += stepDt;
+        // 下面继续执行正常更新逻辑...
+      } else if (frameStepCtrl.stepBackward) {
+        frameStepCtrl.stepBackward = false;
+        // 后退帧：暂不支持真正回退（需要状态快照），仅重置计数
+        frameStepCtrl.currentFrame = Math.max(0, frameStepCtrl.currentFrame - 1);
+        return; // 跳过本帧渲染以外的更新
+      } else {
+        // 完全暂停：只更新洋葱皮（视觉），不更新游戏状态
+        if (debugOptions.onionSkin) {
+          for (const f of fighters) updateOnionSkin(f);
+        }
+        frameStepCtrl.totalFrames = Math.max(frameStepCtrl.totalFrames, frameStepCtrl.currentFrame);
+        return;
+      }
+    }
+
+    // 应用播放速度（帧步进模式下生效）
+    const effectiveDt = (debugOptions.frameStep ? frameStepCtrl.speed : 1.0) * dt;
+
+    // 更新帧计数器
+    if (debugOptions.frames || debugOptions.full) {
+      frameStepCtrl.currentFrame++;
+      frameStepCtrl.totalFrames = Math.max(frameStepCtrl.totalFrames, frameStepCtrl.currentFrame);
+    }
+
     /* --- 动态件推进：布片挂肩背/腰，挂件挂胸/腰/头，随身体运动摆起来 --- */
     for (const f of fighters) {
       const spec = GEAR_SPEC[f.build];
@@ -2023,6 +4036,11 @@ export function initFightBand(opts: FightOptions = {}): void {
                 : world.hipB;
         stepDangle(f.trinket, a.x, a.y, 14 * f.scale, 0.3, 1.0);
       }
+    }
+
+    // ── 洋葱皮/鬼帧更新（仅在启用时执行，性能隔离）──
+    if (debugOptions.onionSkin) {
+      for (const f of fighters) updateOnionSkin(f);
     }
 
     /* --- 投射物推进：轻微下坠 + 与对手躯干碰撞 --- */
@@ -2181,17 +4199,16 @@ export function initFightBand(opts: FightOptions = {}): void {
             // 只是被击倒（hp>0）：躺一下撑地起身接着打，不换人、不回血
             f.ragdoll = null;
             if (dead) f.hp = f.maxHp; // 有限模式的演示：阵亡也满血起身
-            f.getupFade = 0;
             f.knockdown = false;
             setState(f, 'getup');
+            // 用 getup 第一帧(LIE_BACK)初始化 pose，避免从 ragdoll 散架姿态突变闪现
+            f.pose = { ...LIE_BACK };
             f.cool = rand(0.5, 1.0);
           }
         }
         continue;
       }
-      if (f.state === 'getup') {
-        f.getupFade = Math.min(1, f.getupFade + dt * 5);
-      }
+      // getupFade 已移除（不再用 fade-in 模拟起身，直接由关键帧动画驱动）
       // 下蹲是有时限的规避动作，不是一直蹲着
       if (f.state === 'crouch' && f.clipT > 0.6) {
         setState(f, 'idle');
@@ -2239,6 +4256,13 @@ export function initFightBand(opts: FightOptions = {}): void {
       const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
       const targetPose = sampleClip(clip, prog);
       f.pose = lerpPose(f.pose, targetPose, 1 - Math.exp(-dt * 30));
+
+      /* --- PD 控制器：程序化受击反应叠加（可选增强） --- */
+      // 如果角色启用了 PD 控制器且当前激活，将 PD 修正量混合到姿态上
+      // 默认 pdController = null，不走此分支，行为与原来完全一致
+      if (f.pdController && f.pdController.active) {
+        f.pose = updatePDReaction(f.pdController, f.pose, dt);
+      }
 
       /* --- 攻击命中判定（真·空间碰撞，支持多段打击） --- */
       const atk = ATTACKS[f.state];
@@ -2399,6 +4423,12 @@ export function initFightBand(opts: FightOptions = {}): void {
           setState(opp, reactState as State);
           opp.stun = (atk.react === 'light' ? 0.2 : atk.react === 'up' ? 0.5 : 0.42) + (isCounter ? 0.18 : 0);
           opp.cool = Math.max(opp.cool, 0.3);
+          // PD 控制器：如果角色启用了 PD 受击增强，激活程序化反应
+          // （pdController 非 null 时启用；默认为 null 保持原有行为不变）
+          if (opp.pdController) {
+            const pdPreset = reactState === 'hurtLeg' ? 'leg' : reactState === 'hurtUp' ? 'up' : reactState === 'hurtHeavy' ? 'heavy' : 'light';
+            activatePDReaction(opp, pdPreset, isCounter ? 1.3 : 1.0);
+          }
         }
       }
 
@@ -2429,6 +4459,11 @@ export function initFightBand(opts: FightOptions = {}): void {
           if (whiff) stats.whiffs++;
           setState(f, 'idle');
             f.cool = Math.max(f.cool, whiff ? 0.5 : rand(0.25, 0.8));
+            // 打完一招后自动触发短后撤（disengae）：创造"进→打→退→试探"的武打节奏，
+            // 避免两人一直贴脸互殴。连击中不退（保持压制），挥空才多退。
+            if (!f.disengage) {
+              f.disengage = whiff ? rand(0.35, 0.6) : rand(0.15, 0.35);
+            }
           }
         }
       }
@@ -2442,22 +4477,161 @@ export function initFightBand(opts: FightOptions = {}): void {
         // 站着时反应快，移动/举盾中反应慢一点（避免抽搐式反复横跳）
         const gap = f.state === 'idle' ? 0.14 : 0.24;
         // 出招冷却只限制"出招"，不限制"走位/格挡"。
-        // 原来这里要求 cool<=0 才思考，导致冷却期只能站桩（idle 占比 44% 的结构性原因），
-        // 而且 heuristic 里「冷却中间合游走」「冷却中举盾」两个分支永远进不去，是死代码。
         if (f.stun <= 0 && f.lastDecision > gap) {
           f.lastDecision = 0;
-          // 承诺窗口（intentLock 之前只写不读，是死字段）：刚决定走位/举盾就坚持一下，
-          // 别每 0.1s 反悔抽搐。但「对手起手且我在他射程内」必须允许反悔，否则看见再躲来不及。
+          // 承诺窗口（intentLock 已激活）：刚决定走位/举盾就坚持一下
           const ph2 = opp ? movePhase(opp.state) : null;
           const prog2 = opp && opp.clipDur > 0 ? opp.clipT / opp.clipDur : 1;
           const mustReact = !!opp && !!ph2 && prog2 < ph2.first && Math.abs(opp.x - f.x) < ph2.reach + 8;
+
+          /* ===== 新流程：decide → pushToBuffer → tryConsumeBuffer → execute ===== */
+          const decision = decide(f, opp);
+          const now = elapsed;
+
+          // 计算置信度（基于决策类型和局面紧迫性）
+          let confidence = 0.7; // 默认置信度
+          if (mustReact) confidence = 0.95; // 必须反应时高置信度
+          else if (decision === 'jab' || decision === 'snapKick' || decision === 'palm') confidence = 0.8; // 快招高置信度
+          else if (decision === 'spinKick' || decision === 'flyKick' || decision === 'iai') confidence = 0.55; // 大招低置信度
+
+          // 推入输入缓冲区
+          f.inputBuffer.push(decision, confidence, now);
+
+          // 尝试从缓冲区消费决策
+          let executedDecision: Decision | null = null;
+          let executionSource = 'buffer';
+
           if (f.intentLock <= 0 || mustReact || f.state === 'idle') {
-            const decision = decide(f, opp);
-            trace.push({ t: Number(elapsed.toFixed(2)), who: fighters.indexOf(f), build: f.build, snap: snapshot(f, opp), decision });
+            // ---- 优先级 1: 投射物闪避（最高优先级反应） ----
+            const snapForEvade = snapshot(f, opp);
+            const incoming = snapForEvade.incoming[0];
+            if (incoming && incoming.eta < 0.34) {
+              const evaded = f.inputBuffer.consume((d) =>
+                d === 'roll' || d === 'crouch' || d === 'jump' || d === 'block'
+              );
+              if (evaded) {
+                executedDecision = evaded.decision;
+                executionSource = 'buffer-evade';
+              } else {
+                // 缓冲中没有闪避指令时直接用当前决策（如果它是闪避类）
+                if (decision === 'roll' || decision === 'crouch' || decision === 'jump' || decision === 'block') {
+                  executedDecision = decision;
+                  executionSource = 'react';
+                }
+              }
+            }
+
+            // ---- 优先级 2: 攻击决策消费 ----
+            if (!executedDecision && f.cool <= 0) {
+              const isAttack = (d: Decision): boolean =>
+                d !== 'approach' && d !== 'retreat' && d !== 'block' &&
+                d !== 'wait' && d !== 'jump' && d !== 'crouch' && d !== 'roll';
+
+              // 如果当前决策是攻击且在取消窗口内（连招场景），优先消费攻击
+              if (isAttack(decision) && f.comboTimer > 0) {
+                const bufferedAtk = f.inputBuffer.consume(isAttack);
+                if (bufferedAtk) {
+                  executedDecision = bufferedAtk.decision;
+                  executionSource = 'buffer-combo';
+                }
+              }
+
+              // 普通攻击消费
+              if (!executedDecision && isAttack(decision)) {
+                // 检查缓冲区中是否有更高优先级的攻击（置信度更高的）
+                const unconsumed = f.inputBuffer.getUnconsumed(now);
+                const bestAtk = unconsumed.filter(isAttack)
+                  .sort((a, b) => b.confidence - a.confidence)[0];
+                if (bestAtk && bestAtk.confidence >= confidence * 0.9) {
+                  bestAtk.consumed = true; // 标记消费
+                  executedDecision = bestAtk.decision;
+                  executionSource = 'buffer-best';
+                } else {
+                  executedDecision = decision;
+                  executionSource = 'direct';
+                }
+              }
+            }
+
+            // ---- 优先级 3: 移动/防御决策 ----
+            if (!executedDecision) {
+              const isMove = (d: Decision): boolean =>
+                d === 'approach' || d === 'retreat' || d === 'block' || d === 'wait' ||
+                d === 'jump' || d === 'crouch' || d === 'roll';
+              const bufferedMove = f.inputBuffer.consume(isMove);
+              if (bufferedMove) {
+                executedDecision = bufferedMove.decision;
+                executionSource = 'buffer-move';
+              } else {
+                executedDecision = decision;
+                executionSource = 'direct';
+              }
+            }
+          }
+
+          // 执行最终决策
+          if (executedDecision) {
+            trace.push({
+              t: Number(elapsed.toFixed(2)),
+              who: fighters.indexOf(f),
+              build: f.build,
+              snap: snapshot(f, opp),
+              decision: executedDecision,
+              confidence: Math.round(confidence * 100) / 100,
+              source: executionSource,
+              hp: f.hp,
+              guard: f.guard,
+              inCombo: f.comboTimer > 0 || f.comboSteps !== null,
+              intentLockRemaining: Math.round(f.intentLock * 100) / 100,
+            });
             if (trace.length > 4000) trace.splice(0, trace.length - 4000);
-            applyDecision(f, opp, decision);
+
+            // 记录决策历史
+            f.decisionHistory.push({
+              t: now,
+              decision: executedDecision,
+              confidence,
+              source: executionSource,
+              executed: true,
+            });
+            if (f.decisionHistory.length > 200) f.decisionHistory.splice(0, f.decisionHistory.length - 200);
+
+            applyDecision(f, opp, executedDecision);
+
+            // 出招时计算并缓存帧数据
+            const atkRef = ATTACKS[executedDecision];
+            if (atkRef) {
+              const clipRef = CLIPS[executedDecision as keyof typeof CLIPS];
+              if (clipRef) {
+                f.currentFrameData = computeFrameData(executedDecision as string, atkRef, clipRef);
+              }
+            }
+          } else {
+            // 决策被 intentLock 抑制，仍记录
+            f.decisionHistory.push({
+              t: now,
+              decision,
+              confidence,
+              source: 'suppressed',
+              executed: false,
+            });
+            if (f.decisionHistory.length > 200) f.decisionHistory.splice(0, f.decisionHistory.length - 200);
           }
         }
+      }
+
+      /* ---- 每帧更新攻击阶段 ---- */
+      if (f.currentFrameData && ATTACKS[f.state]) {
+        const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
+        f.attackPhase = getAttackPhase(prog, f.currentFrameData);
+        // 招式结束时清除帧数据
+        if (prog >= 1) {
+          f.currentFrameData = null;
+          f.attackPhase = 'none';
+        }
+      } else if (!ATTACKS[f.state]) {
+        f.attackPhase = 'none';
+        f.currentFrameData = null;
       }
     }
 
@@ -3907,7 +6081,9 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.translate(-f.x, -baseY);
     }
 
-    const alpha = f.state === 'getup' ? Math.max(0.02, f.getupFade) : 1;
+    // getup 不再用 fade-in：动作本身已有完整的 躺→坐→跪→站 过渡，
+    // 原来 getupFade 从 0 渐显会导致"倒地后消失再闪现"的视觉 bug。
+    const alpha = 1;
     ctx.save();
     ctx.globalAlpha = alpha;
     if (f.enterT > 0) ctx.translate(0, enterDrop);
@@ -4105,6 +6281,228 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.fillStyle = 'rgba(20,16,12,0.42)';
       ctx.fillText('← → 逐个查看 · 空格 暂停 · S 慢放', W / 2, 41);
       ctx.restore();
+    }
+
+    // ── 增强调试叠加层（多级调试模式）──
+    // 性能关键：所有 debug 分支在非调试模式下完全跳过，零开销
+    const hasAnyDebug = debugBones || debugOptions.hitboxes || debugOptions.frames || debugOptions.hud || debugOptions.onionSkin;
+
+    if (hasAnyDebug) {
+      const BONE_LINKS: [keyof Joints, keyof Joints, string][] = [
+        ['pelvis', 'chest', '#E74C3C'],   // 躯干-红
+        ['chest', 'head', '#E74C3C'],
+        ['shoulderB', 'chest', '#3498DB'], // 后臂-蓝
+        ['shoulderB', 'elbowB', '#3498DB'],
+        ['elbowB', 'handB', '#3498DB'],
+        ['shoulderF', 'chest', '#2ECC71'], // 前臂-绿
+        ['shoulderF', 'elbowF', '#2ECC71'],
+        ['elbowF', 'handF', '#2ECC71'],
+        ['hipB', 'pelvis', '#9B59B6'],     // 后腿-紫
+        ['hipB', 'kneeB', '#9B59B6'],
+        ['kneeB', 'footB', '#9B59B6'],
+        ['hipF', 'pelvis', '#F39C12'],     // 前腿-橙
+        ['hipF', 'kneeF', '#F39C12'],
+        ['kneeF', 'footF', '#F39C12'],
+        // 虚线：跨链辅助线（躯干→膝，帮助判断姿态平衡）
+        ['chest', 'kneeB', 'rgba(149,53,206,0.3)'],
+        ['chest', 'kneeF', 'rgba(243,156,18,0.3)'],
+      ];
+
+      const JOINT_LABELS: [keyof Joints, string][] = [
+        ['head', '头'], ['chest', '胸'], ['pelvis', '骨盆'],
+        ['shoulderB', '后肩'], ['elbowB', '后肘'], ['handB', '后手'],
+        ['shoulderF', '前肩'], ['elbowF', '前肘'], ['handF', '前手'],
+        ['hipB', '后髋'], ['kneeB', '后膝'], ['footB', '后脚'],
+        ['hipF', '前髋'], ['kneeF', '前膝'], ['footF', '前脚'],
+      ];
+
+      for (const f of fighters) {
+        let joints: Record<keyof Joints, Pt>;
+        // down 状态用 ragdoll 坐标，其他状态用 fk 正向运动学
+        if (f.state === 'down' && f.ragdoll) {
+          joints = f.ragdoll as unknown as Record<keyof Joints, Pt>;
+        } else {
+          const { world } = place(f);
+          joints = world;
+        }
+
+        ctx.save();
+
+        // ── 1. 洋葱皮/鬼帧（在角色身后绘制）──
+        if (debugOptions.onionSkin) {
+          drawOnionSkin(ctx, f);
+        }
+
+        // ── 2. 骨骼显示（原有功能，bones 或 full 模式）──
+        if (debugBones || debugOptions.bones) {
+          // 绘制骨连线
+          for (const [a, b, color] of BONE_LINKS) {
+            const pa = joints[a];
+            const pb = joints[b];
+            if (!pa || !pb) continue;
+            ctx.beginPath();
+            ctx.moveTo(pa.x, pa.y);
+            ctx.lineTo(pb.x, pb.y);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = color.includes('rgba') ? 1 : 1.8;
+            if (color.includes('rgba')) ctx.setLineDash([3, 3]);
+            else ctx.setLineDash([]);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+
+          // 绘制关节点（圆点 + 标签）
+          for (const [key, label] of JOINT_LABELS) {
+            const pt = joints[key];
+            if (!pt) continue;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 3.2, 0, TAU);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.strokeStyle = '#1a130e';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.font = '10px ui-monospace, monospace';
+            ctx.fillStyle = 'rgba(20,16,12,0.7)';
+            ctx.textAlign = 'left';
+            ctx.fillText(label, pt.x + 5, pt.y - 4);
+          }
+        }
+
+        // ── 3. 6色命中盒系统（hitboxes 或 full 模式）──
+        if (debugOptions.hitboxes) {
+          const boxes = computeDebugHitboxes(f, joints);
+          drawDebugHitboxes(ctx, boxes);
+
+          // 攻击部位标记：当前状态是攻击招式时，标出命中点（增强版）
+          const atk = ATTACKS[f.state];
+          if (atk && f.state !== 'down' && f.state !== 'getup') {
+            const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
+            for (const h of atk.hits) {
+              if (Math.abs(prog - h.at) < 0.12) {
+                const ap = attackPoint(f, h.part ?? atk.part, (h as any).tipLen ?? 0);
+                ctx.beginPath();
+                ctx.arc(ap.x, ap.y, 7, 0, TAU);
+                ctx.strokeStyle = HITBOX_COLORS[HitboxType.Attack].stroke;
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                ctx.fillStyle = HITBOX_COLORS[HitboxType.Attack].fill;
+                ctx.fill();
+                ctx.font = 'bold 11px ui-monospace, monospace';
+                ctx.fillStyle = HITBOX_COLORS[HitboxType.Attack].stroke;
+                ctx.textAlign = 'center';
+                ctx.fillText(`⚔ ${h.part ?? atk.part}`, ap.x, ap.y - 12);
+              }
+            }
+          }
+        }
+
+        // ── 4. 帧信息显示（frames 或 full 模式）──
+        if (debugOptions.frames) {
+          const infoY = 58 + fighters.indexOf(f) * 72;
+          ctx.font = '11px ui-monospace, "Cascadia Mono", monospace';
+          ctx.fillStyle = 'rgba(255,252,240,0.92)';
+          ctx.fillRect(8, infoY, 240, 64);
+          ctx.strokeStyle = 'rgba(20,16,12,0.2)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(8, infoY, 240, 64);
+          ctx.fillStyle = '#1a130e';
+          ctx.textAlign = 'left';
+          const clipName = f.state;
+          const clipProg = f.clipDur > 0 ? (f.clipT / f.clipDur * 100).toFixed(1) : '-';
+          const poseStr = `lean:${(f.pose.lean||0).toFixed(2)} head:${(f.pose.head||0).toFixed(2)}`;
+          ctx.fillText(`[${fighters.indexOf(f)}] ${f.name}  HP:${f.hp.toFixed(0)}/${f.maxHp}`, 14, infoY + 16);
+          ctx.fillText(`state=${clipName.padEnd(14)} prog=${String(clipProg).padStart(5)}%  cool=${f.cool.toFixed(2)}s`, 14, infoY + 32);
+          ctx.fillText(poseStr, 14, infoY + 48);
+          ctx.fillStyle = 'rgba(20,16,12,0.55)';
+          ctx.fillText(`face=${f.facing>0?'→':'←'}  x=${f.x.toFixed(0)}  invuln=${f.invuln.toFixed(2)}`, 14, infoY + 62);
+        }
+
+        ctx.restore();
+      }
+
+      // ── SF6 风格调试 HUD（hud 或 full 模式）──
+      if (debugOptions.hud) {
+        drawSF6HUD(ctx, W, H);
+      }
+
+      // ── 图例（命中盒模式下显示 6 色图例）──
+      if (debugOptions.hitboxes) {
+        ctx.save();
+        const lgX = W - 120;
+        const lgY = H - 180;
+        ctx.fillStyle = 'rgba(255,252,240,0.92)';
+        ctx.fillRect(lgX, lgY, 114, 172);
+        ctx.strokeStyle = 'rgba(20,16,12,0.2)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(lgX, lgY, 114, 172);
+        ctx.font = 'bold 10px ui-monospace, monospace';
+        ctx.fillStyle = '#1a130e';
+        ctx.textAlign = 'left';
+        ctx.fillText('HITBOX LEGEND', lgX + 8, lgY + 14);
+
+        const hitboxLegends: [HitboxType, string][] = [
+          [HitboxType.Attack, 'Attack (攻击盒)'],
+          [HitboxType.Hurt, 'Hurt (受击盒)'],
+          [HitboxType.Guard, 'Guard (格挡盒)'],
+          [HitboxType.Vulnerable, 'Vulnerable (脆弱)'],
+          [HitboxType.Sensor, 'Sensor (传感)'],
+          [HitboxType.Projection, 'Projection (投射)'],
+        ];
+        hitboxLegends.forEach(([type, label], i) => {
+          const ly = lgY + 30 + i * 22;
+          const colors = HITBOX_COLORS[type];
+          // 色块
+          ctx.fillStyle = colors.fill;
+          ctx.fillRect(lgX + 8, ly - 6, 16, 14);
+          ctx.strokeStyle = colors.stroke;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(lgX + 8, ly - 6, 16, 14);
+          // 标签
+          ctx.font = '9px ui-monospace, monospace';
+          ctx.fillStyle = colors.stroke;
+          ctx.fillText(label, lgX + 30, ly + 5);
+        });
+
+        // 骨骼图例（如果同时启用了 bones）
+        if (debugBones || debugOptions.bones) {
+          const boneLy = lgY + 168;
+          ctx.strokeStyle = 'rgba(20,16,12,0.3)';
+          ctx.beginPath(); ctx.moveTo(lgX, boneLy); ctx.lineTo(lgX + 114, boneLy); ctx.stroke();
+          ctx.font = '9px ui-monospace, monospace';
+          ctx.fillStyle = '#666';
+          ctx.fillText('BONES: skeleton overlay', lgX + 8, boneLy + 14);
+        }
+
+        ctx.restore();
+      }
+
+      // ── 传统骨骼图例（仅 bones 模式，无 hitbox 时）──
+      if ((debugBones || debugOptions.bones) && !debugOptions.hitboxes) {
+        ctx.save();
+        const lgX = W - 100;
+        const lgY = H - 110;
+        ctx.fillStyle = 'rgba(255,252,240,0.9)';
+        ctx.fillRect(lgX, lgY, 94, 102);
+        ctx.strokeStyle = 'rgba(20,16,12,0.2)';
+        ctx.strokeRect(lgX, lgY, 94, 102);
+        ctx.font = '10px ui-monospace, monospace';
+        const legends = [
+          ['━', '#E74C3C', '躯干'],
+          ['━', '#3498DB', '后臂'],
+          ['━', '#2ECC71', '前臂'],
+          ['━', '#9B59B6', '后腿'],
+          ['━', '#F39C12', '前腿'],
+        ];
+        legends.forEach(([sym, col, txt], i) => {
+          const ly = lgY + 14 + i * 16;
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(lgX + 8, ly); ctx.lineTo(lgX + 26, ly); ctx.stroke();
+          ctx.fillStyle = '#1a130e'; ctx.textAlign = 'left'; ctx.fillText(txt, lgX + 32, ly + 4);
+        });
+        ctx.restore();
+      }
     }
   };
 
