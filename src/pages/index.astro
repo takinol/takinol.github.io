@@ -120,7 +120,7 @@ const PER_PAGE = 8;
   <!-- 小人打架：骨骼动画（逻辑在 src/scripts/fight.ts） -->
   <script>
     import { initFightBand } from '../scripts/fight';
-    initFightBand();
+    initFightBand({ forceVisible: true });
 
     // 方框外的 VS 角标：左上左对、右上右对（读取引擎当前在场角色）
     const hudL = document.getElementById('hud-left') as HTMLElement | null;
