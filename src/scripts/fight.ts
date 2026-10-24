@@ -284,7 +284,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.42, pose: SPIN_MID }, { t: 0.56, pose: SPIN_KICK }, { t: 0.72, pose: SPIN_KICK }, { t: 0.9, pose: GUARD }, { t: 1, pose: GUARD }] },
+  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.42, pose: SPIN_MID }, { t: 0.56, pose: SPIN_KICK }, { t: 0.72, pose: SPIN_KICK }, { t: 0.9, pose: SPIN_END }, { t: 1, pose: SPIN_END }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -1470,6 +1470,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     const zB = (get('elbowB').z || 0) + (get('handB').z || 0);
     const zF = (get('elbowF').z || 0) + (get('handF').z || 0);
     const backArmIsFarther = zB <= zF;
+    const zLegB = (get('kneeB').z || 0) + (get('footB').z || 0);
+    const zLegF = (get('kneeF').z || 0) + (get('footF').z || 0);
+    const backLegIsFarther = zLegB <= zLegF;
 
     const drawArm = (which: 'B' | 'F', base: string) => {
       const s = get(which === 'B' ? 'shoulderB' : 'shoulderF');
@@ -1498,7 +1501,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     };
 
     drawArm(backArmIsFarther ? 'B' : 'F', dark);
-    drawLeg('B', dark);
+    drawLeg(backLegIsFarther ? 'B' : 'F', dark);
 
     torsoShape(pelvis, chest, k * torsoScale, body);
 
@@ -1556,7 +1559,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       jointCap(get('shoulderB'), 4.6 * k, trim);
     }
 
-    drawLeg('F', body);
+    drawLeg(backLegIsFarther ? 'F' : 'B', body);
     drawArm(backArmIsFarther ? 'F' : 'B', body);
   };
 
@@ -1595,15 +1598,6 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.translate(-f.x, -baseY);
     }
 
-    // 转体（后旋踢等）：用横向缩放模拟身体转过来，cos 为负时自动镜像
-    const spin = f.pose.spin || 0;
-    if (Math.abs(spin) > 0.01) {
-      const pw = place(f).world.pelvis;
-      const sx = Math.cos(spin);
-      ctx.translate(pw.x, pw.y);
-      ctx.scale(sx >= 0 ? Math.max(0.08, sx) : Math.min(-0.08, sx), 1);
-      ctx.translate(-pw.x, -pw.y);
-    }
     const alpha = f.state === 'getup' ? Math.max(0.02, f.getupFade) : 1;
     ctx.save();
     ctx.globalAlpha = alpha;
