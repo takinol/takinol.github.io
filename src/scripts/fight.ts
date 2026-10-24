@@ -231,9 +231,11 @@ const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35,
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
 const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: -0.1, legLB: 0.08, legUBD: 0, legUF: 1.05, legLF: -1.7, legUFD: 0.15, yaw: 0 });
 
-const SPIN_MID = P({ lean: 0.1, head: 0.15, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: 3.14 });
-const SPIN_TUCK2 = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: -0.1, legLB: 0.08, legUBD: 0, legUF: 1.05, legLF: -1.7, legUFD: 0.15, yaw: 6.28 });
-const SPIN_KICK = P({ lean: -0.14, head: 0.05, armUB: -0.5, armLB: 0.9, armUF: 0.7, armLF: 1.1, legUB: -0.06, legLB: 0.04, legUBD: 0, legUF: 0.9, legLF: 0.05, legUFD: 0.1, yaw: 6.28 });
+const SPIN_FRONT = P({ lean: 0.1, head: 0.1, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -1.571 });
+const SPIN_LEFT = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -3.14 });
+const SPIN_BACK = P({ lean: 0.1, head: 0.1, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -4.712 });
+const SPIN_TUCK2 = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: -0.1, legLB: 0.08, legUBD: 0, legUF: 1.05, legLF: -1.7, legUFD: 0.15, yaw: -6.28 });
+const SPIN_KICK = P({ lean: -0.14, head: 0.05, armUB: -0.5, armLB: 0.9, armUF: 0.7, armLF: 1.1, legUB: -0.06, legLB: 0.04, legUBD: 0, legUF: 0.9, legLF: 0.05, legUFD: 0.1, yaw: -6.28 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
@@ -286,7 +288,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.1, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.12, pose: SPIN_TUCK }, { t: 0.32, pose: SPIN_MID }, { t: 0.52, pose: SPIN_TUCK2 }, { t: 0.62, pose: SPIN_KICK }, { t: 0.76, pose: SPIN_KICK }, { t: 0.9, pose: GUARD }, { t: 1, pose: GUARD }] },
+  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.24, pose: SPIN_FRONT }, { t: 0.38, pose: SPIN_LEFT }, { t: 0.52, pose: SPIN_BACK }, { t: 0.66, pose: SPIN_TUCK2 }, { t: 0.76, pose: SPIN_KICK }, { t: 0.9, pose: GUARD }, { t: 1, pose: GUARD }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -335,7 +337,7 @@ const ATTACKS: Record<string, Atk> = {
   sideKick: { part: 'footF', hits: [{ at: 0.54, dmg: [18, 27], reach: 1.35, knock: 430 }], hitstop: 0.08, react: 'heavy' },
   roundKick: { part: 'footF', hits: [{ at: 0.54, dmg: [16, 24], reach: 1.3, knock: 300 }], hitstop: 0.075, react: 'heavy' },
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
-  spinKick: { part: 'footF', hits: [{ at: 0.62, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
+  spinKick: { part: 'footF', hits: [{ at: 0.78, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
   flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
   scissorKick: {
     part: 'footF',
@@ -1336,80 +1338,117 @@ export function initFightBand(opts: FightOptions = {}): void {
     body: string,
     trim: string,
     expr: 'normal' | 'hurt' | 'down',
-    facing: number,
-    camFace: number
+    side: number,
+    faceCam: number
   ) => {
     const rx = L.headR * k;
     const ry = (L.headR + 0.6) * k;
 
     // 脖子先垫一层（避免下巴和身体之间露空）
-    ell({ x: head.x - facing * rx * 0.1, y: head.y + ry * 0.95, z: 0 }, rx * 0.5, ry * 0.45, 0, OUTLINE);
+    ell({ x: head.x - side * rx * 0.1, y: head.y + ry * 0.95, z: 0 }, rx * 0.5, ry * 0.45, 0, OUTLINE);
 
-    // 颅骨（描边 + 填充）
+    // 后脑勺朝镜头：整头头发，只露耳朵
+    if (faceCam < -0.55) {
+      ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx + 1.5, ry + 1.5, 0, OUTLINE);
+      ctx.beginPath();
+      ctx.ellipse(head.x, head.y - ry * 0.06, rx, ry, 0, 0, TAU);
+      ctx.fillStyle = trim;
+      ctx.fill();
+      ell({ x: head.x - side * rx * 0.86, y: head.y + ry * 0.04, z: 0 }, rx * 0.24, ry * 0.3, 0, body);
+      return;
+    }
+
+    // 正脸朝镜头：两只眼睛、鼻子中线、居中嘴
+    if (faceCam > 0.55) {
+      ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx + 1.5, ry + 1.5, 0, OUTLINE);
+      ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx, ry, 0, body);
+      // 头发只盖顶部
+      ctx.beginPath();
+      ctx.ellipse(head.x, head.y - ry * 0.34, rx * 1.02, ry * 0.8, 0, Math.PI * 0.92, Math.PI * 2.08);
+      ctx.closePath();
+      ctx.fillStyle = trim;
+      ctx.fill();
+      // 两只眼睛
+      ell({ x: head.x - rx * 0.34, y: head.y + ry * 0.02, z: 0 }, rx * 0.17, ry * 0.18, 0, '#FFFFFF');
+      ell({ x: head.x + rx * 0.34, y: head.y + ry * 0.02, z: 0 }, rx * 0.17, ry * 0.18, 0, '#FFFFFF');
+      disc({ x: head.x - rx * 0.34, y: head.y + ry * 0.02, z: 0 }, Math.max(0.9, rx * 0.1), '#1b1512');
+      disc({ x: head.x + rx * 0.34, y: head.y + ry * 0.02, z: 0 }, Math.max(0.9, rx * 0.1), '#1b1512');
+      // 鼻子（小竖线）
+      ctx.strokeStyle = '#1b1512';
+      ctx.lineWidth = Math.max(0.9, rx * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(head.x, head.y + ry * 0.12);
+      ctx.lineTo(head.x, head.y + ry * 0.28);
+      ctx.stroke();
+      // 嘴
+      ctx.beginPath();
+      if (expr === 'normal') {
+        ctx.moveTo(head.x - rx * 0.22, head.y + ry * 0.5);
+        ctx.lineTo(head.x + rx * 0.22, head.y + ry * 0.5);
+      } else {
+        ell({ x: head.x, y: head.y + ry * 0.5, z: 0 }, rx * 0.16, ry * 0.14, 0, '#5a1f24');
+      }
+      ctx.stroke();
+      return;
+    }
+
+    // 侧脸（side = 脸朝哪一侧）
     ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx + 1.5, ry + 1.5, 0, OUTLINE);
     ell({ x: head.x, y: head.y - ry * 0.06, z: 0 }, rx, ry, 0, body);
-
-    // 下颌 / 下巴（朝面向方向鼓出）
-    ell({ x: head.x + facing * rx * 0.3, y: head.y + ry * 0.5, z: 0 }, rx * 0.58, ry * 0.46, 0, body);
-
-    // 耳朵（后侧）
-    ell({ x: head.x - facing * rx * 0.86, y: head.y + ry * 0.04, z: 0 }, rx * 0.24, ry * 0.3, 0, body);
-
+    // 下颌 / 下巴
+    ell({ x: head.x + side * rx * 0.3, y: head.y + ry * 0.5, z: 0 }, rx * 0.58, ry * 0.46, 0, body);
+    // 耳朵
+    ell({ x: head.x - side * rx * 0.86, y: head.y + ry * 0.04, z: 0 }, rx * 0.24, ry * 0.3, 0, body);
     // 头发：覆盖颅骨上半与后脑
     ctx.beginPath();
-    ctx.ellipse(head.x - facing * rx * 0.16, head.y - ry * 0.34, rx * 1.04, ry * 0.86, 0, Math.PI * 0.98, Math.PI * 2.06);
+    ctx.ellipse(head.x - side * rx * 0.16, head.y - ry * 0.34, rx * 1.04, ry * 0.86, 0, Math.PI * 0.98, Math.PI * 2.06);
     ctx.closePath();
     ctx.fillStyle = trim;
     ctx.fill();
-    // 刘海（朝面向方向垂下一角）
+    // 刘海
     ctx.beginPath();
-    ctx.moveTo(head.x - facing * rx * 0.2, head.y - ry * 0.9);
-    ctx.quadraticCurveTo(head.x + facing * rx * 0.75, head.y - ry * 0.7, head.x + facing * rx * 0.42, head.y - ry * 0.05);
-    ctx.quadraticCurveTo(head.x + facing * rx * 0.1, head.y - ry * 0.4, head.x - facing * rx * 0.2, head.y - ry * 0.9);
+    ctx.moveTo(head.x - side * rx * 0.2, head.y - ry * 0.9);
+    ctx.quadraticCurveTo(head.x + side * rx * 0.75, head.y - ry * 0.7, head.x + side * rx * 0.42, head.y - ry * 0.05);
+    ctx.quadraticCurveTo(head.x + side * rx * 0.1, head.y - ry * 0.4, head.x - side * rx * 0.2, head.y - ry * 0.9);
     ctx.fillStyle = trim;
     ctx.fill();
-
-    // 眼睛（白眼球 + 瞳孔）
-    const eyeX = head.x + facing * rx * 0.46;
+    // 眼睛
+    const eyeX = head.x + side * rx * 0.46;
     const eyeY = head.y + ry * 0.02;
     if (expr === 'normal') {
       ell({ x: eyeX, y: eyeY, z: 0 }, rx * 0.2, ry * 0.19, 0, '#FFFFFF');
-      disc({ x: eyeX + facing * rx * 0.05, y: eyeY, z: 0 }, Math.max(0.9, rx * 0.11), '#1b1512');
-      // 眉毛
+      disc({ x: eyeX + side * rx * 0.05, y: eyeY, z: 0 }, Math.max(0.9, rx * 0.11), '#1b1512');
       ctx.strokeStyle = '#1b1512';
       ctx.lineWidth = Math.max(1, rx * 0.12);
       ctx.beginPath();
-      ctx.moveTo(eyeX - facing * rx * 0.24, eyeY - ry * 0.3);
-      ctx.lineTo(eyeX + facing * rx * 0.24, eyeY - ry * 0.24);
+      ctx.moveTo(eyeX - side * rx * 0.24, eyeY - ry * 0.3);
+      ctx.lineTo(eyeX + side * rx * 0.24, eyeY - ry * 0.24);
       ctx.stroke();
     } else {
-      // 受伤：›‹ 眼
       ctx.strokeStyle = '#1b1512';
       ctx.lineWidth = Math.max(1.2, rx * 0.15);
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(eyeX - facing * rx * 0.2, eyeY - ry * 0.16);
-      ctx.lineTo(eyeX + facing * rx * 0.2, eyeY);
-      ctx.lineTo(eyeX - facing * rx * 0.2, eyeY + ry * 0.16);
+      ctx.moveTo(eyeX - side * rx * 0.2, eyeY - ry * 0.16);
+      ctx.lineTo(eyeX + side * rx * 0.2, eyeY);
+      ctx.lineTo(eyeX - side * rx * 0.2, eyeY + ry * 0.16);
       ctx.stroke();
     }
-
-    // 鼻子（小鼓包）
-    ell({ x: head.x + facing * rx * 0.8, y: head.y + ry * 0.22, z: 0 }, rx * 0.14, ry * 0.13, 0, body);
+    // 鼻子
+    ell({ x: head.x + side * rx * 0.8, y: head.y + ry * 0.22, z: 0 }, rx * 0.14, ry * 0.13, 0, body);
     // 嘴
     ctx.strokeStyle = '#1b1512';
     ctx.lineWidth = Math.max(0.9, rx * 0.1);
     ctx.beginPath();
     if (expr === 'normal') {
-      ctx.moveTo(head.x + facing * rx * 0.36, head.y + ry * 0.5);
-      ctx.lineTo(head.x + facing * rx * 0.72, head.y + ry * 0.48);
+      ctx.moveTo(head.x + side * rx * 0.36, head.y + ry * 0.5);
+      ctx.lineTo(head.x + side * rx * 0.72, head.y + ry * 0.48);
     } else {
-      ell({ x: head.x + facing * rx * 0.52, y: head.y + ry * 0.5, z: 0 }, rx * 0.16, ry * 0.14, 0, '#5a1f24');
+      ell({ x: head.x + side * rx * 0.52, y: head.y + ry * 0.5, z: 0 }, rx * 0.16, ry * 0.14, 0, '#5a1f24');
     }
     ctx.stroke();
   };
 
-  /** 整具身体：按深度排序分层绘制 */
   const drawFigure = (
     get: (k: string) => Pt,
     k: number,
@@ -1419,7 +1458,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     expr: 'normal' | 'hurt' | 'down',
     facing: number,
     camFace: number,
-    gear: 'ranger' | 'warrior'
+    gear: 'ranger' | 'warrior',
+    side: number
   ) => {
     const pelvis = get('pelvis');
     const chest = get('chest');
@@ -1480,7 +1520,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.1, y: chest.y + (chest.y - pelvis.y) * 0.1, z: 0 };
     limb(neckA, { x: head.x - facing * 3 * k, y: head.y + L.headR * k * 0.7, z: 0 }, 3.5 * k, 3.2 * k, dark);
 
-    headShape(head, k, body, trim, expr, facing, camFace);
+    headShape(head, k, body, trim, expr, side, camFace);
 
     // 装备：游侠背剑 + 围巾；战士肩甲
     if (gear === 'ranger') {
@@ -1533,7 +1573,9 @@ export function initFightBand(opts: FightOptions = {}): void {
 
     // 体型：战士更宽（宽度放大），游侠更瘦
     const bulk = f.build === 'warrior' ? 1.22 : 0.84;
-    const camFace = Math.cos(f.pose.yaw || 0);
+    const yaw = f.pose.yaw || 0;
+    const faceCam = -Math.sin(yaw);
+    const side = Math.cos(yaw) >= 0 ? f.facing : -f.facing;
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
@@ -1570,16 +1612,19 @@ export function initFightBand(opts: FightOptions = {}): void {
       const rd = f.ragdoll;
       drawFigure(
         (key) => ({ x: (rd[key] as Pt).x, y: (rd[key] as Pt).y }),
-        f.scale,
+        f.scale * bulk,
         body,
         trim,
         dark,
         'down',
-        f.facing
+        f.facing,
+        faceCam,
+        f.build,
+        side
       );
     } else {
       const { world } = place(f);
-      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, camFace, f.build);
+      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, faceCam, f.build, side);
     }
     ctx.restore();
     ctx.restore();
