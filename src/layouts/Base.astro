@@ -168,7 +168,10 @@ const pageDescription = description ?? site.description;
           el.classList.contains('brand') ||
           el.classList.contains('lightbox-btn') ||
           el.classList.contains('pw-btn') ||
-          el.classList.contains('ext-btn')
+          el.classList.contains('ext-btn') ||
+          // 标签色块和蒙德里安色块有自己的配色，不能被随机 hover 色覆盖
+          el.classList.contains('tc-chip') ||
+          el.classList.contains('post-card')
         )
           return;
         el.setAttribute('data-hov', '');

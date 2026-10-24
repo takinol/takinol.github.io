@@ -1835,6 +1835,10 @@ html:not([data-theme="dark"]) .icon-sun {
 
 .mondrian-grid .post-card:hover {
   transform: none;
+  /* 色块不移动、不缩放，保持拼贴的整块感 */
+  translate: none;
+  scale: none;
+  color: var(--card-fg);
   filter: brightness(1.07);
 }
 
@@ -1918,38 +1922,41 @@ html:not([data-theme="dark"]) .icon-sun {
   gap: 6px;
 }
 
+/* 标签：纯矩形色块 + 孟菲斯（Memphis Group）厚黑边
+   颜色由列表页按标签名哈希从孟菲斯色卡里取，同一个标签永远同一个颜色 */
 .tc-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
+  padding: 3px 9px;
+  border: 2px solid #070d0d;
+  border-radius: 0;
+  background: var(--tag-bg, #fff5ee);
+  color: var(--tag-fg, #070d0d);
   font-family: inherit;
   font-size: 12.5px;
-  line-height: 1.6;
+  font-weight: 600;
+  line-height: 1.5;
   cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease,
-    background-color 0.18s ease;
+  transition: filter 0.15s ease, translate 0.15s ease;
 }
 
 .tc-chip:hover {
-  color: var(--text);
-  border-color: var(--text-faint);
+  filter: brightness(0.92);
+  translate: 0 -1px;
 }
 
+/* 选中态反相成纯黑（Bacterio Black），一眼看出当前筛选 */
 .tc-chip.is-active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  background: #070d0d;
+  color: #fff5ee;
+  border-color: #070d0d;
 }
 
 .tc-count {
   font-family: var(--font-mono);
   font-size: 11px;
-  opacity: 0.65;
+  opacity: 0.7;
 }
 
 .tag-empty {

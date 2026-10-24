@@ -39,6 +39,41 @@ const mondrian = [
 
 // 每个色块的“随意长度”：让矩形高低不一，拼起来更像蒙德里安的构成画
 const mondrianHeights = [232, 168, 204, 148, 220, 180];
+
+// 孟菲斯（Memphis Group，1981 米兰首展）层压板色卡 —— 取自 Carlton 置物架的馆藏记录
+const memphis = [
+  { bg: '#DE0C62', fg: '#FFF5EE' }, // Memphis Pink 粉
+  { bg: '#2242C7', fg: '#FFF5EE' }, // Memphis Blue 钴蓝
+  { bg: '#FFDF22', fg: '#070D0D' }, // Primrose Yellow 樱草黄
+  { bg: '#9ACD32', fg: '#070D0D' }, // Carlton Lime 青柠
+  { bg: '#95A3A6', fg: '#070D0D' }, // Laminate Grey 层压板灰
+  { bg: '#FFF5EE', fg: '#070D0D' }, // Bacterio White 骨白
+];
+
+// 按标签名做稳定哈希取色：同一个标签永远同一个颜色，以后加标签也不用管配色
+function hashTag(tag: string): number {
+  let h = 5381;
+  for (let i = 0; i < tag.length; i++) {
+    h = ((h << 5) + h + tag.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+// 先按哈希定位颜色，撞色就顺延到下一个空位 —— 保证标签之间颜色互不相同
+const tagColorMap = new Map<string, { bg: string; fg: string }>();
+{
+  const used = new Set<number>();
+  for (const [tag] of tagList) {
+    let idx = hashTag(tag) % memphis.length;
+    let step = 0;
+    while (used.has(idx) && step < memphis.length) {
+      idx = (idx + 1) % memphis.length;
+      step++;
+    }
+    used.add(idx);
+    tagColorMap.set(tag, memphis[idx]);
+  }
+}
 ---
 
 <Base title="Blog" description="全部文章列表">
@@ -107,15 +142,23 @@ const mondrianHeights = [232, 168, 204, 148, 220, 180];
           <section class="tag-cloud" id="tag-cloud" aria-label="标签筛选">
             <div class="tag-cloud-title">标签</div>
             <div class="tag-cloud-list">
-              <button type="button" class="tc-chip is-active" data-tag="">
+              <button type="button" class="tc-chip is-active" data-tag="" style="--tag-bg:#FFF5EE;--tag-fg:#070D0D">
                 全部<span class="tc-count">{posts.length}</span>
               </button>
-              {tagList.map(([tag, count]) => (
-                <button type="button" class="tc-chip" data-tag={tag}>
-                  {tag}
-                  <span class="tc-count">{count}</span>
-                </button>
-              ))}
+              {tagList.map(([tag, count]) => {
+                const c = tagColorMap.get(tag) ?? memphis[0];
+                return (
+                  <button
+                    type="button"
+                    class="tc-chip"
+                    data-tag={tag}
+                    style={`--tag-bg:${c.bg};--tag-fg:${c.fg}`}
+                  >
+                    {tag}
+                    <span class="tc-count">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         )
