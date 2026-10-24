@@ -2081,7 +2081,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       {
         key: 'system',
         transitions: [
-          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_INITIAL, '', 'idle'],
           [STATE_ANY, 'HURT_LIGHT', 'hitReaction'],
           [STATE_ANY, 'HURT_HEAVY', 'hitReaction'],
           [STATE_ANY, 'HURT_UP', 'hitReaction'],
@@ -2093,7 +2093,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       {
         key: 'hitReaction',
         transitions: [
-          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_INITIAL, '', 'idle'],
           [STATE_ANY, 'HURT_LIGHT', 'hurtLight'],
           [STATE_ANY, 'HURT_HEAVY', 'hurtHeavy'],
           [STATE_ANY, 'HURT_UP', 'hurtUp'],
@@ -2127,7 +2127,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       {
         key: 'combat',
         transitions: [
-          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_INITIAL, '', 'idle'],
           // 从 idle 发起的攻击（30 个）
           ['idle', 'JAB', 'jab'], ['idle', 'CROSS', 'cross'], ['idle', 'HOOK', 'hook'],
           ['idle', 'UPPERCUT', 'uppercut'], ['idle', 'ELBOW', 'elbow'], ['idle', 'KNEE', 'knee'],
@@ -2193,7 +2193,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       {
         key: 'locomotion',
         transitions: [
-          [STATE_INITIAL, STATE_EMPTY, 'idle'],
+          [STATE_INITIAL, '', 'idle'],
           ['idle', 'WALK', 'walk'], ['idle', 'APPROACH', 'approach'],
           ['idle', 'RETREAT', 'retreat'], ['idle', 'JUMP', 'jump'],
           ['walk', 'IDLE', 'idle'], ['walk', 'APPROACH', 'approach'],
