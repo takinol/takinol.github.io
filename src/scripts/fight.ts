@@ -793,8 +793,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   const ATTACK_KEYS = Object.keys(ATTACKS);
 
-  /** 按距离筛选可用招式，再按「伤害越高权重越低」加权随机 */
-  const pickAttack = (f: Fighter, d: number): Decision => {
+  /** 按距离筛选可用招式，再按「威力 + 局面」加权随机 */
+  const pickAttack = (f: Fighter, d: number, opp: FightSnapshot['opponent'] | null): Decision => {
     const pool = ATTACK_KEYS.filter((k) => {
       const a = ATTACKS[k];
       if (a.close && d > 36) return false;
@@ -806,8 +806,21 @@ export function initFightBand(opts: FightOptions = {}): void {
     const weights = list.map((k) => {
       const a = ATTACKS[k];
       const power = a.hits.reduce((s, h) => s + (h.dmg[0] + h.dmg[1]) / 2, 0);
-      // 重招概率低一些；连击招式再打个折
-      return Math.max(0.3, 24 / power) * (a.hits.length > 1 ? 0.75 : 1);
+      // 基础：伤害越高概率越低（重招稀有）；连击招再打折
+      let w = Math.max(0.3, 24 / power) * (a.hits.length > 1 ? 0.75 : 1);
+
+      // ---- 根据局面加权 ----
+      const oppHurt = opp && (opp.state === 'hurtLight' || opp.state === 'hurtHeavy' || opp.state === 'hurtUp' || opp.state === 'stumble');
+      const oppBlock = opp && opp.state === 'block';
+      const oppLow = opp && opp.hp < 30;
+      const selfLow = f.hp < 30;
+      if (oppHurt && power >= 20) w *= 2.2;   // 对手硬直中 -> 重招追击
+      if (oppBlock && (k === 'pushKick' || k === 'axeKick')) w *= 2.0; // 破防
+      if (oppLow && (k === 'spinKick' || k === 'flyKick' || k === 'sideKick')) w *= 2.5; // 终结技
+      if (selfLow && power < 14) w *= 1.8;    // 自己残血 -> 轻快招抢速度
+      if (a.close && d < 30) w *= 1.4;        // 近身 -> 近招更合适
+      if (a.far && d >= 30) w *= 1.4;         // 远距 -> 远招更合适
+      return w;
     });
     const total = weights.reduce((a, b) => a + b, 0);
     let r = Math.random() * total;
@@ -817,24 +830,32 @@ export function initFightBand(opts: FightOptions = {}): void {
     }
     return list[0] as Decision;
   };
-  /** 本地启发式 AI：会走位、会格挡、残血会退、偶尔跳闪 */
+
+  /** 本地启发式 AI：走位 / 格挡 / 闪避 / 追击 / 残血撤退 / 按局面选招 */
   const heuristic = (snap: FightSnapshot, f: Fighter): Decision => {
     const d = snap.self.distance;
     const oppWinding = snap.opponent.windingUp;
 
-    // 对手要打过来了：优先格挡
-    if (oppWinding && d < f.preferDist + 22 && Math.random() < f.guardChance) return 'block';
+    // 对手在硬直/踉跄中：立刻追击（重招概率已由 pickAttack 拉高）
+    if ((snap.opponent.state === 'hurtLight' || snap.opponent.state === 'hurtHeavy' || snap.opponent.state === 'hurtUp' || snap.opponent.state === 'stumble') && d < f.preferDist + 8 && f.cool <= 0) {
+      return pickAttack(f, d, snap.opponent);
+    }
+    // 对手要打过来了：优先格挡，其次跳开闪避
+    if (oppWinding && d < f.preferDist + 22) {
+      const r = Math.random();
+      if (r < 0.28) return 'jump';
+      if (r < 0.28 + f.guardChance * 0.65) return 'block';
+    }
     // 太远：靠近
     if (d > f.preferDist + 9) return 'approach';
     // 残血谨慎：偶尔退开
     if (f.hp < 32 && Math.random() < 0.35) return 'retreat';
     // 贴太近：拉开一点
     if (d < f.preferDist - 8) return Math.random() < 0.5 ? 'retreat' : 'wait';
-    // 在攻击距离内：按距离 + 性格加权选招
+    // 在攻击距离内：按距离 + 性格 + 局面选招
     if (f.cool <= 0) {
-      // 偶尔跳开闪避
       if (Math.random() < 0.12) return 'jump';
-      return pickAttack(f, d);
+      return pickAttack(f, d, snap.opponent);
     }
     return 'wait';
   };
