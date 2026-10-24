@@ -488,7 +488,8 @@ html:not([data-theme="dark"]) .icon-sun {
   border-radius: 14px;
   padding: 20px 24px 18px;
   margin-bottom: 14px;
-  transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease,
+    background-color 0.15s ease, box-shadow 0.18s ease;
 }
 
 .post-card:hover {
@@ -1800,10 +1801,19 @@ html:not([data-theme="dark"]) .icon-sun {
   opacity: 0.55;
 }
 
-/* ---------- 列表卡片封面图 ---------- */
+/* ---------- 列表卡片：封面图 + 彩色边框 ---------- */
 .post-card {
   position: relative;
   overflow: hidden;
+  /* 彩色边框：颜色由列表页轮换赋值（--card-c，Tailwind 400 色系） */
+  border-color: var(--card-c, var(--border));
+  border-color: color-mix(in srgb, var(--card-c, var(--accent)) 55%, var(--border));
+}
+
+.post-card:hover {
+  border-color: var(--card-c, var(--accent));
+  border-color: color-mix(in srgb, var(--card-c, var(--accent)) 88%, var(--border));
+  box-shadow: 0 10px 28px -16px color-mix(in srgb, var(--card-c, var(--accent)) 65%, transparent);
 }
 
 /* 封面照片只占卡片右侧一块；透明度由文章 frontmatter 的 coverOpacity 控制 */
@@ -1839,6 +1849,8 @@ html:not([data-theme="dark"]) .icon-sun {
 
 /* ---------- 右侧标签集合 ---------- */
 .tag-cloud {
+  /* 往下挪一点，不要顶着页面顶部 */
+  margin-top: 16px;
   margin-bottom: 22px;
 }
 

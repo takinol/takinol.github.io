@@ -27,6 +27,18 @@ for (const p of posts) {
 const tagList = [...tagCount.entries()].sort(
   (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')
 );
+
+// 卡片彩色边框用的知名色系：Tailwind CSS 400 系列（浅色/深色主题下都清楚）
+const cardPalette = [
+  '#60a5fa', // blue-400
+  '#a78bfa', // violet-400
+  '#f472b6', // pink-400
+  '#fbbf24', // amber-400
+  '#34d399', // emerald-400
+  '#22d3ee', // cyan-400
+  '#fb923c', // orange-400
+  '#fb7185', // rose-400
+];
 ---
 
 <Base title="Blog" description="全部文章列表">
@@ -40,11 +52,12 @@ const tagList = [...tagCount.entries()].sort(
       {
         posts.length > 0 ? (
           <div style="margin-top: 36px" id="post-list">
-            {posts.map((post) => (
+            {posts.map((post, i) => (
               <a
                 class="post-card"
                 href={`/blog/${post.id}/`}
                 data-tags={(post.data.tags ?? []).join(',')}
+                style={`--card-c:${cardPalette[i % cardPalette.length]}`}
               >
                 {post.data.cover && (
                   <span
