@@ -184,7 +184,6 @@ import Base from '../layouts/Base.astro';
       };
       mk(leftEl, 0);
       mk(rightEl, Math.min(1, list.length - 1));
-      rightEl.value = String(Math.min(3, list.length - 1));
 
       // URL 参数：/arena?l=9&r=11 直接指定左右角色（角色图鉴的卡片链接用这个）
       const q2 = new URLSearchParams(location.search);
@@ -195,7 +194,8 @@ import Base from '../layouts/Base.astro';
     };
 
     document.getElementById('start')?.addEventListener('click', start);
-    start();
-    fillPicks();
+    start();      // 先初始化一次，让引擎暴露 roster 接口
+    fillPicks();  // 用 roster + URL 参数填入选项并选中最终角色
+    start();      // 用最终选择重开，保证界面与实际对打同步
   </script>
 </Base>
