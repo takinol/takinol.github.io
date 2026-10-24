@@ -818,6 +818,8 @@ interface AtkHit {
   at: number;
   dmg: [number, number];
   reach: number;
+  /** 击退力度（px/s）：决定对手被打中后的退行速度 */
+  knock: number;
   /** 不写就用招式的默认部位 */
   part?: StrikePart;
   /** 武器尖端长度（px，沿前臂方向刚性延伸）；-1 = 用链锤甩动球 trinket 做接触点 */
@@ -1150,7 +1152,7 @@ function buildMoveMeta(id: string): MoveMeta | null {
   const maxDmg = Math.max(...allDmgs);
 
   // 提取击退值（取最大的 knock）
-  const maxKnock = Math.max(...atk.hits.map(h => (h as AtkHit & { knock?: number }).knock ?? 0));
+  const maxKnock = Math.max(...atk.hits.map(h => h.knock ?? 0));
 
   return {
     id,
@@ -1902,13 +1904,10 @@ export interface FightOptions {
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
-  // DEBUG: 全局错误捕获，帮助定位运行时问题
-  console.log('[fight] initFightBand called, opts:', JSON.stringify(opts));
   const canvas = document.getElementById(opts.canvasId ?? 'fight-canvas') as HTMLCanvasElement | null;
   if (!canvas) { console.error('[fight] canvas #', (opts.canvasId ?? 'fight-canvas'), 'not found!'); return; }
   const ctx = canvas.getContext('2d');
   if (!ctx) { console.error('[fight] cannot get 2d context'); return; }
-  console.log('[fight] canvas size:', canvas.clientWidth, 'x', canvas.clientHeight, 'dpr:', window.devicePixelRatio);
 
   // URL 参数调试系统：支持多级模式
   // ?debug=bones|hitboxes|frames|full|onion|hud (&frame_step=true)
@@ -2199,7 +2198,9 @@ export function initFightBand(opts: FightOptions = {}): void {
           ['walk', 'IDLE', 'idle'], ['walk', 'APPROACH', 'approach'],
           ['walk', 'RETREAT', 'retreat'], ['walk', 'JUMP', 'jump'],
           ['approach', 'IDLE', 'idle'], ['approach', 'WALK', 'walk'],
+          ['approach', 'JUMP', 'jump'],
           ['retreat', 'IDLE', 'idle'], ['retreat', 'WALK', 'walk'],
+          ['retreat', 'JUMP', 'jump'],
           ['jump', 'LAND', 'idle'],
         ],
         states: [
@@ -2867,6 +2868,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   }
   let rafId = 0;
   let last = 0;
+  let running = false; // 引擎运行标志：destroy 时设为 false 防止 rAF 竞态
   let visible = true; // 默认可见，IntersectionObserver 会修正；避免初始 false 导致首帧永远不更新
   let tabVisible = document.visibilityState !== 'hidden';
 
@@ -2954,7 +2956,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (opts.params?.hp) { f.maxHp = opts.params.hp; f.hp = opts.params.hp; }
       fighters.push(f);
       // 启动 FSM：进入初始状态（system.idle → hitReaction.idle → combat.idle → locomotion.idle）
-      f.fsm.dispatch('').catch(() => {});
+      f.fsm.dispatch('').catch((err: Error) => console.warn('[fight] FSM init error for fighter', i, err.message));
     }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
   };
@@ -6526,6 +6528,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   };
 
   const loop = (ts: number) => {
+    if (!running) return;
     rafId = requestAnimationFrame(loop);
     if (!last) last = ts;
     const dt = Math.min(0.05, (ts - last) / 1000);
@@ -6536,29 +6539,40 @@ export function initFightBand(opts: FightOptions = {}): void {
     render();
   };
 
-  console.log('[fight] starting game loop, reduceMotion:', reduceMotion, 'visible:', visible, 'forceVisible:', opts.forceVisible, 'tabVisible:', tabVisible, 'fighters:', fighters.length);
   resize();
   if (opts.demo) startDemoEntry(0);
-  window.addEventListener('resize', () => {
-    window.clearTimeout((window as any).__fightResize);
-    (window as any).__fightResize = window.setTimeout(resize, 140);
-  });
 
+  // ---- 事件监听器（保存引用便于 destroy 时移除）----
+  let resizeTimerId = 0;
+  const onResize = () => {
+    window.clearTimeout(resizeTimerId);
+    resizeTimerId = window.setTimeout(resize, 140);
+  };
+  window.addEventListener('resize', onResize);
+
+  let intersectionObs: IntersectionObserver | null = null;
   if ('IntersectionObserver' in window) {
-    new IntersectionObserver((e) => (visible = e[0]?.isIntersecting ?? false), { threshold: 0.15 }).observe(canvas);
+    intersectionObs = new IntersectionObserver((e) => (visible = e[0]?.isIntersecting ?? false), { threshold: 0.15 });
+    intersectionObs.observe(canvas);
   } else {
     visible = true;
   }
-  document.addEventListener('visibilitychange', () => {
-    tabVisible = document.visibilityState !== 'hidden';
-  });
 
-  if (!reduceMotion) rafId = requestAnimationFrame(loop);
-  window.addEventListener('pagehide', () => cancelAnimationFrame(rafId));
+  const onVisibilityChange = () => {
+    tabVisible = document.visibilityState !== 'hidden';
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  const onPageHide = () => {
+    running = false;
+    cancelAnimationFrame(rafId);
+  };
+  window.addEventListener('pagehide', onPageHide);
 
   // 演示模式的键盘控制
+  let demoKeydownHandler: ((ev: KeyboardEvent) => void) | null = null;
   if (opts.demo) {
-    window.addEventListener('keydown', (ev) => {
+    demoKeydownHandler = (ev: KeyboardEvent) => {
       if (ev.key === 'ArrowRight') {
         startDemoEntry(demoIdx + 1);
         ev.preventDefault();
@@ -6571,8 +6585,14 @@ export function initFightBand(opts: FightOptions = {}): void {
       } else if (ev.key === 's' || ev.key === 'S') {
         demoSlow = !demoSlow;
       }
-    });
+    };
+    window.addEventListener('keydown', demoKeydownHandler);
   }
+
+  // 启动游戏循环
+  running = true;
+  if (!reduceMotion) rafId = requestAnimationFrame(loop);
+
   // 对外接口（将来接 AI API 用）
   (window as any).takinolFight = {
     setController,
@@ -6602,10 +6622,23 @@ export function initFightBand(opts: FightOptions = {}): void {
     reset: () => setController(null),
     /** 当前在场角色名（按顺序），供主页角标显示 */
     matchup: () => fighters.map((f) => f.name),
-    /** 停止引擎（重新开打前调用） */
+    /** 停止引擎（重新开打前调用）—— 完整清理所有资源 */
     destroy: () => {
-      keyAbort.abort();
+      // 1. 停止游戏循环（防止 rAF 竞态：loop 开头检查 running）
+      running = false;
       cancelAnimationFrame(rafId);
+      // 2. 清理手动模式键盘监听
+      keyAbort.abort();
+      // 3. 移除所有事件监听器
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      if (demoKeydownHandler) window.removeEventListener('keydown', demoKeydownHandler);
+      // 4. 断开 IntersectionObserver
+      if (intersectionObs) { intersectionObs.disconnect(); intersectionObs = null; }
+      // 5. 清理 resize 防抖定时器
+      clearTimeout(resizeTimerId);
+      // 6. 清空所有游戏状态
       fighters = [];
       sparks = [];
       popups = [];
