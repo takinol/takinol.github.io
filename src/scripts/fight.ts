@@ -648,7 +648,17 @@ export type Decision =
 
 export interface FightSnapshot {
   self: { hp: number; x: number; state: string; distance: number };
-  opponent: { hp: number; x: number; state: string; windingUp: boolean };
+  opponent: {
+    hp: number;
+    x: number;
+    state: string;
+    /** 对手正在起手（命中帧之前）——「他要打过来了」 */
+    windingUp: boolean;
+    /** 对手正在收招（命中帧之后）—— 可以抢进去打的破绽 */
+    recovering: boolean;
+    /** 对手这招的威胁半径（经验值，用于判断自己是否在其射程内） */
+    threatRange: number;
+  };
 }
 
 export type FightController = (snap: FightSnapshot) => Decision | null;
@@ -808,6 +818,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     intentLock: number;
     /** 反击窗口：格挡成功后短暂提升反击招权重 */
     counterWindow: number;
+    /** 架势值（guard）：格挡会消耗，耗尽 → 破防大硬直。站架不动时缓慢回复 */
+    guard: number;
+    /** 破防硬直剩余时间：此时无法格挡且受伤加重 */
+    guardBreak: number;
+    /** 举盾已持续时间：不能一直举着，超时自动放下 */
+    blockT: number;
     /** 连招窗口：命中后短暂提升快速招权重 */
     comboTimer: number;
     /** 当前连招步骤（null=不在连招中） */
@@ -937,6 +953,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     preferDist: rand(29, 34),
     intentLock: 0,
     counterWindow: 0,
+    guard: 100,
+    guardBreak: 0,
+    blockT: 0,
     comboTimer: 0,
     comboSteps: null,
     comboIndex: 0,
@@ -1215,15 +1234,39 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /* ---------- 决策 ---------- */
 
-  const snapshot = (f: Fighter, opp: Fighter | undefined): FightSnapshot => ({
-    self: { hp: f.hp, x: f.x, state: f.state, distance: opp ? Math.abs(opp.x - f.x) : 999 },
-    opponent: {
-      hp: opp?.hp ?? 100,
-      x: opp?.x ?? 0,
-      state: opp?.state ?? 'idle',
-      windingUp: !!opp && (opp.state === 'jab' || opp.state === 'cross' || opp.state === 'kick') && opp.clipT < opp.clipDur * 0.35,
-    },
-  });
+  /** 招式的起手/命中/收招节奏（片段归一化进度） */
+  const movePhase = (s: string) => {
+    const a = ATTACKS[s];
+    if (!a) return null;
+    let first = 1;
+    let last = 0;
+    let reach = 1;
+    for (const h of a.hits) {
+      first = Math.min(first, h.at);
+      last = Math.max(last, h.at);
+      reach = Math.max(reach, h.reach);
+    }
+    return { first, last, reach };
+  };
+
+  const snapshot = (f: Fighter, opp: Fighter | undefined): FightSnapshot => {
+    const ph = opp ? movePhase(opp.state) : null;
+    const prog = opp && opp.clipDur > 0 ? opp.clipT / opp.clipDur : 0;
+    return {
+      self: { hp: f.hp, x: f.x, state: f.state, distance: opp ? Math.abs(opp.x - f.x) : 999 },
+      opponent: {
+        hp: opp?.hp ?? 100,
+        x: opp?.x ?? 0,
+        state: opp?.state ?? 'idle',
+        // 起手：任意攻击招的命中帧之前 —— 这是「他要打过来了」的信号
+        windingUp: !!ph && prog < ph.first * 0.9,
+        // 收招：最后一个命中帧之后 —— 这是可以抢进去打的破绽
+        recovering: !!ph && prog > ph.last + 0.05,
+        // 威胁半径（经验换算）：对手这招大概能打多远
+        threatRange: ph ? 30 * ph.reach : 24,
+      },
+    };
+  };
 
   const ATTACK_KEYS = Object.keys(ATTACKS);
 
@@ -1312,35 +1355,65 @@ export function initFightBand(opts: FightOptions = {}): void {
   };
 
   /** 本地启发式 AI：走位 / 格挡 / 闪避 / 追击 / 残血撤退 / 按局面选招 */
+  const HURT_STATES = ['hurtLight', 'hurtHeavy', 'hurtUp', 'stumble'];
+
   const heuristic = (snap: FightSnapshot, f: Fighter): Decision => {
     const d = snap.self.distance;
-    const oppWinding = snap.opponent.windingUp;
+    const opp = snap.opponent;
+    const oppWinding = opp.windingUp;
+    // 我正站在对手这招够得到的范围里（+缓冲）
+    const inThreat = d < opp.threatRange + 8;
     // 生态位节奏分化：盾卫蹲守、狂战扑脸、巧变流爱跳
     const behavior = GEAR_SPEC[f.build].behavior;
-    if (behavior === 'turtle' && oppWinding && d < 55 && Math.random() < 0.4) return 'block';
-    if (behavior === 'rusher' && f.cool <= 0 && d < 46 && Math.random() < 0.3) return pickAttack(f, d, snap.opponent);
     if (behavior === 'trickster' && Math.random() < 0.07) return 'jump';
+    // 破防硬直中举不起盾 —— 这时只能挨打或后撤
+    const canBlock = f.guardBreak <= 0 && f.guard > 18;
+    const guardUp = (v: number) => (canBlock ? 'block' : 'retreat');
 
-    // 对手在硬直/踉跄中：立刻追击（重招概率已由 pickAttack 拉高）
-    if ((snap.opponent.state === 'hurtLight' || snap.opponent.state === 'hurtHeavy' || snap.opponent.state === 'hurtUp' || snap.opponent.state === 'stumble') && d < f.preferDist + 8 && f.cool <= 0) {
-      return pickAttack(f, d, snap.opponent);
-    }
-    // 对手要打过来了：优先格挡，其次跳开闪避
-    if (oppWinding && d < f.preferDist + 22) {
+    /* ① 感知对方起手 → 撤出他的射程（间合博弈：不硬吃，先拉开） */
+    if (oppWinding && inThreat) {
       const r = Math.random();
-      if (r < 0.28) return 'jump';
-      if (r < 0.28 + f.guardChance * 0.65) return 'block';
+      if (behavior === 'turtle') {
+        if (r < 0.5) return guardUp(0);
+        if (r < 0.78) return 'retreat';
+      } else {
+        if (r < 0.44) return 'retreat'; // 主动拉开距离
+        if (r < 0.44 + f.guardChance * 0.42) return guardUp(0);
+        if (r < 0.68) return 'jump';
+        // 剩下 32%：不退反进，抢在他命中帧之前打断（读招成功）
+        if (f.cool <= 0 && d < f.preferDist + 6) return pickAttack(f, d, opp);
+      }
     }
+
+    /* ② 对手在收招（招式已过命中帧）= 破绽 → 突进去打 */
+    if (opp.recovering && f.cool <= 0) {
+      if (d > f.preferDist + 4) return 'approach'; // 先进到射程（走位会加速冲刺）
+      return pickAttack(f, d, opp);
+    }
+
+    /* ③ 对手在硬直/踉跄中：立刻追击（重招概率已由 pickAttack 拉高） */
+    if (HURT_STATES.includes(opp.state) && d < f.preferDist + 8 && f.cool <= 0) {
+      return pickAttack(f, d, opp);
+    }
+    if (behavior === 'rusher' && f.cool <= 0 && d < 46 && Math.random() < 0.3) return pickAttack(f, d, opp);
+
+    /* ④ 间合试探（footsies）：站在对手射程边缘，进退交替寻找进场时机 */
+    const edge = opp.threatRange + 10;
+    if (!inThreat && d < edge + 16 && f.cool > 0) {
+      // 冷却中不便出手 —— 在射程外一圈游走，忽远忽近
+      return Math.random() < 0.45 + f.aggression * 0.2 ? 'approach' : 'retreat';
+    }
+
     // 太远：靠近
     if (d > f.preferDist + 9) return 'approach';
     // 残血谨慎：偶尔退开
     if (f.hp < 32 && Math.random() < 0.35) return 'retreat';
-    // 贴太近：拉开一点
-    if (d < f.preferDist - 8) return Math.random() < 0.5 ? 'retreat' : 'wait';
+    // 贴太近：拉开一点（避免两人黏在一起）
+    if (d < f.preferDist - 8) return Math.random() < 0.6 ? 'retreat' : 'wait';
     // 在攻击距离内：按距离 + 性格 + 局面选招
     if (f.cool <= 0) {
-      if (Math.random() < 0.12) return 'jump';
-      return pickAttack(f, d, snap.opponent);
+      if (Math.random() < 0.1) return 'jump';
+      return pickAttack(f, d, opp);
     }
     return 'wait';
   };
@@ -1437,7 +1510,10 @@ export function initFightBand(opts: FightOptions = {}): void {
   const keepDistance = (f: Fighter) => {
     const opp = fighters[f.partner];
     if (!opp) return;
-    const minGap = 19 * Math.max(f.scale, opp.scale);
+    // 任何一方正在出招 / 倒地时不做硬性分离，否则突进类招式会被卡住打不到
+    if (ATTACKS[f.state] || ATTACKS[opp.state] || f.state === 'down' || f.state === 'stumble') return;
+    // 站架时保持一个看得出来的间距，别两个人贴在一起
+    const minGap = 25 * Math.max(f.scale, opp.scale);
     const dx = f.x - opp.x;
     if (Math.abs(dx) < minGap) {
       const s = dx === 0 ? (f.facing >= 0 ? -1 : 1) : Math.sign(dx);
@@ -1638,6 +1714,24 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
 
       if (f.counterWindow > 0) f.counterWindow -= dt;
+      // 架势：破防硬直中先不回复；举着盾回得慢，站架/走动回得快
+      if (f.guardBreak > 0) {
+        f.guardBreak = Math.max(0, f.guardBreak - dt);
+        if (f.guardBreak === 0) f.guard = 52;
+      } else {
+        f.guard = Math.min(100, f.guard + (f.state === 'block' ? 7 : 24) * dt);
+      }
+      // 举盾有时限：不能一直举着当铁桶，超时自动放下并进入短暂冷却
+      if (f.state === 'block') {
+        f.blockT += dt;
+        if (f.blockT > 0.6) {
+          setState(f, 'idle');
+          f.cool = Math.max(f.cool, 0.32);
+          f.blockT = 0;
+        }
+      } else {
+        f.blockT = 0;
+      }
       if (f.enterT > 0) f.enterT = Math.max(0, f.enterT - dt);
       if (f.comboTimer > 0) f.comboTimer -= dt;
       if (f.comboTimer <= 0) { f.comboSteps = null; f.comboIndex = 0; }
@@ -1646,15 +1740,11 @@ export function initFightBand(opts: FightOptions = {}): void {
         if (Math.abs(f.sway) < 0.02) f.sway = 0;
       }
       if (f.kb !== 0) {
-
         f.x += f.kb * dt;
-
-        f.kb *= Math.exp(-dt * 9);
-
+        // 衰减越慢 = 飞得越远（原来 -9 太快，打完几乎没位移）
+        f.kb *= Math.exp(-dt * 5);
         if (Math.abs(f.kb) < 3) f.kb = 0;
-
         f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
-
       }
 
       /* --- 倒地 --- */
@@ -1703,13 +1793,17 @@ export function initFightBand(opts: FightOptions = {}): void {
         f.facing = target >= f.x ? 1 : -1;
         f.clipT += dt;
 
+        // 突进：对手正在收招（破绽）或自己刚刚打完想压上去时，脚步明显加快
+        const oppPh = opp ? movePhase(opp.state) : null;
+        const oppRec = !!oppPh && opp.clipDur > 0 && opp.clipT / opp.clipDur > oppPh.last + 0.05;
+        const rush = oppRec || f.comboTimer > 0;
         if (f.state === 'approach' && d > f.preferDist && f.clipT < 3.5) {
-          f.x += f.facing * 54 * dt;
+          f.x += f.facing * (rush ? 104 : 54) * dt;
           f.walkPhase += dt * 1.9;
           f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
         } else if (f.state === 'retreat' && f.clipT < f.clipDur) {
-          // 后撤是短暂的规避动作，不是一直逃跑
-          f.x -= f.facing * 42 * dt;
+          // 后撤是短暂的规避动作：要撤得干脆，一脚退出对手射程
+          f.x -= f.facing * 72 * dt;
           f.walkPhase += dt * 1.6;
           f.pose = lerpPose(f.pose, walkPose(f.walkPhase, -0.85), 1 - Math.exp(-dt * 22));
         } else {
@@ -1774,21 +1868,39 @@ export function initFightBand(opts: FightOptions = {}): void {
             continue;
           }
 
-          const blocking = opp.state === 'block';
-          const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * (blocking ? 0.22 : 1));
+          // 架势值系统：格挡要付出代价，撑不住就破防（破防中无法格挡且挨打更疼）
+          const meta0 = MOVE_META[f.state];
+          const guarding = opp.state === 'block' && opp.guardBreak <= 0;
+          const broken = opp.guardBreak > 0;
+          const mul = guarding ? (meta0?.breakGuard ? 0.62 : 0.34) : broken ? 1.6 : 1;
+          const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * mul);
           opp.hp = Math.max(0, opp.hp - dmg);
-          popups.push({ x: at.x + rand(-6, 6), y: at.y - 26, text: '-' + dmg, life: 0, max: 0.9, color: blocking ? '#6BA8D6' : '#E23B2E' });
+          popups.push({ x: at.x + rand(-6, 6), y: at.y - 26, text: '-' + dmg, life: 0, max: 0.9, color: guarding ? '#6BA8D6' : broken ? '#FFD24A' : '#E23B2E' });
           // 每招专属打击特效（取代原来所有招共用的一套方形火花）
-          burstFx(f.state, at.x, at.y, f.facing, blocking);
+          burstFx(f.state, at.x, at.y, f.facing, guarding);
 
-          if (blocking) {
-            spawn(at.x, at.y, '#9AD9FF', 'block', 6, 0.8);
-            opp.kb = f.facing * 90;
-            opp.sway = 0.25;
-            opp.counterWindow = 0.25;
+          if (guarding) {
+            // 格挡扣架势：重招、破防招扣得多
+            const cost = (meta0?.breakGuard ? 36 : 23) * (h.knock > 300 ? 1.45 : 1);
+            opp.guard -= cost;
+            const broke = opp.guard <= 0;
+            spawn(at.x, at.y, broke ? '#FFD24A' : '#9AD9FF', 'block', broke ? 13 : 6, broke ? 1.5 : 0.8);
+            opp.kb = f.facing * (h.knock > 300 ? 180 : 135); // 格挡也会被压退，不是钉在原地
+            opp.sway = 0.3;
+            opp.counterWindow = 0.16;
             f.comboSteps = null;
-            f.kb = -f.facing * 60;
+            f.kb = -f.facing * 72;
             hitstop = Math.max(hitstop, 0.03);
+
+            if (broke) {
+              opp.guard = 0;
+              opp.guardBreak = 0.8;
+              setState(opp, 'stumble');
+              shake = Math.max(shake, 7);
+              zoom = Math.max(zoom, 0.035);
+              impactRings.push({ x: at.x, y: at.y, r0: 6, r1: 46, life: 0, max: 0.34, color: '#FFD24A', wide: 3 });
+              popups.push({ x: at.x, y: at.y - 44, text: 'GUARD BREAK', life: 0, max: 1.1, color: '#FFD24A' });
+            }
             continue;
           }
 
@@ -3343,23 +3455,44 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.restore();
     ctx.restore();
 
-    // 姓名牌：登场时大号显示，之后（设定模式）持续小号
-    if (f.enterT > 0 || opts.showNames) {
-      const ny = groundY() - 52 * f.scale + (f.enterT > 0 ? enterDrop : 0);
-      const big = f.enterT > 0;
-      const na = big ? Math.min(1, 1.2 - f.enterT / f.enterDur) : 0.85;
+    // 登场姓名：艺术字体 + 小变大震撼（easeOutBack 回弹 + 金色光晕）
+    if (f.enterT > 0) {
+      const p = Math.max(0, Math.min(1, 1 - f.enterT / f.enterDur));
+      const sc = Math.max(0.1, easeOutBack(p));
+      const ny = groundY() - 62 * f.scale + enterDrop;
+      const na = Math.min(1, p * 2.4);
       ctx.save();
       ctx.globalAlpha = na;
-      ctx.font = `bold ${(big ? 13 : 10) * f.scale}px ui-sans-serif, system-ui, sans-serif`;
-      ctx.textAlign = 
-'center'
-;
-      ctx.textBaseline = 
-'middle'
-;
+      ctx.translate(f.x, ny);
+      ctx.scale(sc, sc);
+      ctx.font = `bold ${30 * f.scale}px 'STXingkai','Xingkai SC','KaiTi','STKaiti','FangSong','Microsoft YaHei',serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(f.name).width;
+      const bw = tw / 2 + 16;
+      // 暗底牌 + 金色边框 + 光晕
+      ctx.shadowColor = 'rgba(255,190,60,0.9)';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = 'rgba(18,10,4,0.82)';
+      ctx.fillRect(-bw, -19, bw * 2, 38);
+      ctx.strokeStyle = 'rgba(255,205,100,0.95)';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(-bw, -19, bw * 2, 38);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#FFE9B8';
+      ctx.fillText(f.name, 0, 1);
+      ctx.restore();
+    } else if (opts.showNames) {
+      // 持续小号姓名（设定模式）
+      const ny = groundY() - 54 * f.scale;
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.font = `bold ${11 * f.scale}px 'STXingkai','KaiTi','STKaiti','Microsoft YaHei',serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       const tw = ctx.measureText(f.name).width;
       ctx.fillStyle = 'rgba(20,16,12,0.72)';
-      ctx.fillRect(f.x - tw / 2 - 6, ny - (big ? 9 : 7), tw + 12, big ? 18 : 14);
+      ctx.fillRect(f.x - tw / 2 - 6, ny - 7, tw + 12, 14);
       ctx.fillStyle = '#FFFFFF';
       ctx.fillText(f.name, f.x, ny);
       ctx.restore();
