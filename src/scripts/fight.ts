@@ -229,14 +229,10 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: -0.1, legLB: 0.08, legUBD: 0, legUF: 1.05, legLF: -1.7, legUFD: 0.15, yaw: 0 });
-
-const SPIN_FRONT = P({ lean: 0.1, head: 0.1, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -1.571 });
-const SPIN_LEFT = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -3.14 });
-const SPIN_BACK = P({ lean: 0.1, head: 0.1, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.08, legLB: 0.06, legUBD: 0, legUF: 1.0, legLF: -1.65, legUFD: 0.15, yaw: -4.712 });
-const SPIN_TUCK2 = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: -0.1, legLB: 0.08, legUBD: 0, legUF: 1.05, legLF: -1.7, legUFD: 0.15, yaw: -6.28 });
-const SPIN_KICK = P({ lean: -0.14, head: 0.05, armUB: -0.5, armLB: 0.9, armUF: 0.7, armLF: 1.1, legUB: -0.06, legLB: 0.04, legUBD: 0, legUF: 0.9, legLF: 0.05, legUFD: 0.1, yaw: -6.28 });
-const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
+const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: 1.0, legLB: -1.6, legUBD: 0.15, legUF: -0.12, legLF: 0.1, legUFD: 0, yaw: 0 });
+const SPIN_MID = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: -0.9, legLB: -0.6, legUBD: -0.2, legUF: 0.15, legLF: 0.05, legUFD: 0, yaw: -3.14 });
+const SPIN_KICK = P({ lean: -0.12, head: 0.18, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0.05, legUBD: -0.25, legUF: 0.12, legLF: 0.04, legUFD: 0, yaw: -3.14 });
+const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: -6.28 });
 
 /** 腾空飞踢：跳起来前冲踢 */
 const FLY_CROUCH = P({ lean: 0.34, head: -0.1, armUB: -0.6, armLB: 0.8, armUF: -0.7, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
@@ -288,7 +284,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.24, pose: SPIN_FRONT }, { t: 0.38, pose: SPIN_LEFT }, { t: 0.52, pose: SPIN_BACK }, { t: 0.66, pose: SPIN_TUCK2 }, { t: 0.76, pose: SPIN_KICK }, { t: 0.9, pose: GUARD }, { t: 1, pose: GUARD }] },
+  spinKick: { dur: 1.2, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.1, pose: SPIN_TUCK }, { t: 0.45, pose: SPIN_MID }, { t: 0.7, pose: SPIN_KICK }, { t: 0.84, pose: SPIN_KICK }, { t: 0.94, pose: GUARD }, { t: 1, pose: GUARD }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -337,7 +333,7 @@ const ATTACKS: Record<string, Atk> = {
   sideKick: { part: 'footF', hits: [{ at: 0.54, dmg: [18, 27], reach: 1.35, knock: 430 }], hitstop: 0.08, react: 'heavy' },
   roundKick: { part: 'footF', hits: [{ at: 0.54, dmg: [16, 24], reach: 1.3, knock: 300 }], hitstop: 0.075, react: 'heavy' },
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
-  spinKick: { part: 'footF', hits: [{ at: 0.78, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
+  spinKick: { part: 'footB', hits: [{ at: 0.72, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
   flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
   scissorKick: {
     part: 'footF',
