@@ -1902,10 +1902,13 @@ export interface FightOptions {
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
+  // DEBUG: 全局错误捕获，帮助定位运行时问题
+  console.log('[fight] initFightBand called, opts:', JSON.stringify(opts));
   const canvas = document.getElementById(opts.canvasId ?? 'fight-canvas') as HTMLCanvasElement | null;
-  if (!canvas) return;
+  if (!canvas) { console.error('[fight] canvas #', (opts.canvasId ?? 'fight-canvas'), 'not found!'); return; }
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) { console.error('[fight] cannot get 2d context'); return; }
+  console.log('[fight] canvas size:', canvas.clientWidth, 'x', canvas.clientHeight, 'dpr:', window.devicePixelRatio);
 
   // URL 参数调试系统：支持多级模式
   // ?debug=bones|hitboxes|frames|full|onion|hud (&frame_step=true)
@@ -6533,6 +6536,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     render();
   };
 
+  console.log('[fight] starting game loop, reduceMotion:', reduceMotion, 'visible:', visible, 'forceVisible:', opts.forceVisible, 'tabVisible:', tabVisible, 'fighters:', fighters.length);
   resize();
   if (opts.demo) startDemoEntry(0);
   window.addEventListener('resize', () => {
