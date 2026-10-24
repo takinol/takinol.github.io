@@ -145,24 +145,14 @@ const PER_PAGE = 8;
     .fight-hud {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin: 18px 2px 6px;
-      font-family: 'STXingkai', 'Xingkai SC', 'KaiTi', 'STKaiti', 'Microsoft YaHei', serif;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 1px;
+      margin: 0 2px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
     }
-    .fight-hud span {
-      background: linear-gradient(90deg, #8B7BB8, #C98FB5);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    @media (max-width: 640px) {
-      .fight-hud {
-        margin-top: 12px;
-        font-size: 13px;
-      }
+    .fight-hud + .fight-band {
+      margin-top: 4px;
     }
   </style>
 </Base>
