@@ -752,7 +752,7 @@ export interface FightOptions {
   forceVisible?: boolean;
   /** 演示模式下是否在 canvas 顶部画招式标题 HUD（图鉴等嵌入场景可关） */
   hud?: boolean;
-  /** 无限模式：倒地后换下一个随机挑战者（默认开） */
+  /** 无限模式：真正阵亡后换下一个随机挑战者（默认开）；普通击倒只倒地再起身 */
   endless?: boolean;
   /** 持续显示姓名牌（设定模式用） */
   showNames?: boolean;
@@ -1022,7 +1022,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   }
   let projectiles: Projectile[] = [];
   /** 大规模检测用计数器（引擎内部统计，比从外面看状态可靠） */
-  const stats = { attacks: 0, hits: 0, whiffs: 0, blocks: 0, breaks: 0, downs: 0, deaths: 0 };
+  const stats = { attacks: 0, hits: 0, whiffs: 0, blocks: 0, breaks: 0, downs: 0, nonlethalDowns: 0, lethalDowns: 0, deaths: 0 };
   /** 决策落盘：输入观测 + 实际动作，行为克隆 / 复盘直接可用（环形保留最近 4000 条） */
   const trace: { t: number; who: number; build: string; snap: FightSnapshot; decision: string }[] = [];
   let elapsed = 0;
@@ -1352,7 +1352,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     f.pendingCombo = null; // 状态一变，待接的连招就作废（被打断 / 被菜单打岔）
   };
 
-  const startRagdoll = (f: Fighter) => {
+  const startRagdoll = (f: Fighter, lethal = f.hp <= 0) => {
+    // 死因只能由命中结算时的 hp<=0 决定。普通击退/投技只倒地，起身继续战斗。
+    if (lethal) stats.lethalDowns++;
+    else stats.nonlethalDowns++;
     stats.downs++;
     const w = place(f).world;
     const rd: Fighter['ragdoll'] = {};
@@ -1871,15 +1874,15 @@ export function initFightBand(opts: FightOptions = {}): void {
   }
 
   const DEMO_LIST: DemoEntry[] = [
-    { key: 'thrust', name: '⑳ 突刺 Thrust（长枪直取）', kind: 'attack' },
-    { key: 'smash', name: '㉑ 抡砸 Smash（大锤下劈）', kind: 'attack' },
-    { key: 'bash', name: '㉒ 盾击 Bash（盾面推撞）', kind: 'attack' },
-    { key: 'slash', name: '㉓ 连斩 Slash（双刃两段）', kind: 'attack' },
-    { key: 'palm', name: '㉔ 推掌 Palm（整掌前送）', kind: 'attack' },
-    { key: 'swing', name: '㉕ 横扫 Swing（战斧大弧）', kind: 'attack' },
-    { key: 'iai', name: '㉖ 拔刀斩 Iai（居合一闪）', kind: 'attack' },
-    { key: 'flailSwing', name: '㉗ 链锤 Flail（抡链砸击）', kind: 'attack' },
-    { key: 'gearPunch', name: '㉘ 机关拳 Gear Punch（活塞重拳）', kind: 'attack' },
+    { key: 'thrust', name: '⑳ 突刺 Thrust（长枪直取）', kind: 'attack', gap: 96 },
+    { key: 'smash', name: '㉑ 抡砸 Smash（大锤下劈）', kind: 'attack', gap: 56 },
+    { key: 'bash', name: '㉒ 盾击 Bash（盾面推撞）', kind: 'attack', gap: 48 },
+    { key: 'slash', name: '㉓ 连斩 Slash（双刃两段）', kind: 'attack', gap: 50 },
+    { key: 'palm', name: '㉔ 推掌 Palm（整掌前送）', kind: 'attack', gap: 44 },
+    { key: 'swing', name: '㉕ 横扫 Swing（战斧大弧）', kind: 'attack', gap: 66 },
+    { key: 'iai', name: '㉖ 拔刀斩 Iai（居合一闪）', kind: 'attack', gap: 88 },
+    { key: 'flailSwing', name: '㉗ 链锤 Flail（抡链砸击）', kind: 'attack', gap: 48 },
+    { key: 'gearPunch', name: '㉘ 机关拳 Gear Punch（活塞重拳）', kind: 'attack', gap: 54 },
     { key: 'bolt', name: '㉙ 弩箭 Bolt（弹道射击）', kind: 'attack' },
     { key: 'shuriken', name: '㉚ 飞镖 Shuriken（旋转星镖）', kind: 'attack' },
     { key: 'jab', name: '① 刺拳 Jab（前手直拳）', kind: 'attack' },
@@ -1902,9 +1905,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     { key: 'jump', name: '⑱ 跳跃 Jump（起跳闪避）', kind: 'jump' },
     { key: 'ko', name: '⑲ 倒地 → 起身 KO & Get Up', kind: 'ko' },
     { key: 'roll', name: '㉛ 翻滚 Roll（团身滚翻）', kind: 'jump' },
-    { key: 'knee', name: '㉟ 膝击 Knee（提膝顶撞）', kind: 'attack' },
-    { key: 'throw', name: '㊱ 投技 Throw（抓住抡出·破格挡）', kind: 'attack' },
-    { key: 'counterStrike', name: '㊲ 反击 Counter（侧让反打）', kind: 'attack' },
+    { key: 'knee', name: '㉟ 膝击 Knee（提膝顶撞）', kind: 'attack', gap: 40 },
+    { key: 'throw', name: '㊱ 投技 Throw（抓住抡出·破格挡）', kind: 'attack', gap: 40 },
+    { key: 'counterStrike', name: '㊲ 反击 Counter（侧让反打）', kind: 'attack', gap: 56 },
     { key: 'crouch', name: '㉜ 下蹲 Crouch（躲上段）', kind: 'react' },
     { key: 'tired', name: '㉝ 喘息 Tired（残血弯腰）', kind: 'react' },
     { key: 'hurtLeg', name: '㉞ 受击·腿（屈膝踉跄）', kind: 'react' },
@@ -1935,7 +1938,9 @@ export function initFightBand(opts: FightOptions = {}): void {
 
     // 每次演示都回到同样的站位与姿势，方便逐个对比
     const cx = W / 2;
-    a.x = cx - 30;
+    // 演示站位距离：每招不同，再按英雄体型(scale)和武器维度(bulk)缩放
+    const demoGap = ((e.gap ?? 60) * a.scale * (GEAR_SPEC[a.build]?.bulk ?? 1)) / 2;
+    a.x = cx - demoGap;
     a.facing = 1;
     a.kb = 0;
     a.hp = a.maxHp;
@@ -1945,7 +1950,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     a.clipT = 0;
     a.clipDur = CLIPS.idle.dur;
 
-    d.x = cx + 30;
+    d.x = cx + demoGap;
     d.facing = -1;
     d.kb = 0;
     d.hp = d.maxHp;
@@ -2013,13 +2018,23 @@ export function initFightBand(opts: FightOptions = {}): void {
           const blocking = target.state === 'block';
           const dmg = Math.round(p.dmg * (blocking ? 0.22 : 1));
           target.hp = Math.max(0, target.hp - dmg);
+          const lethal = target.hp <= 0;
           popups.push({ x: p.x, y: p.y - 22, text: '-' + dmg, life: 0, max: 0.9, color: blocking ? '#6BA8D6' : '#E23B2E' });
           burstFx(p.kind === 'bolt' ? 'bolt' : 'shuriken', p.x, p.y, Math.sign(p.vx), blocking);
           if (!blocking) {
+            stats.hits++;
             target.flash = 1;
             target.kb = Math.sign(p.vx) * p.knock;
             target.sway = 0.55;
+            if (!lethal) {
+              setState(target, p.kind === 'bolt' ? 'hurtHeavy' : 'hurtLight');
+              target.stagger = p.kind === 'bolt' ? 0.4 : 0.22;
+              target.stun = p.kind === 'bolt' ? 0.42 : 0.2;
+              target.cool = Math.max(target.cool, 0.3);
+            }
           }
+          // 投射物也必须当场走同一条死亡流程，不能血量为 0 还站着等下一拳。
+          if (lethal) startRagdoll(target, true);
           return false;
         }
       }
@@ -2317,7 +2332,7 @@ export function initFightBand(opts: FightOptions = {}): void {
 
           if (opp.hp <= 0) {
             spawn(at.x, at.y, '#FAC901', 'hit', 14, 1.6);
-            startRagdoll(opp);
+            startRagdoll(opp, true);
             break;
           }
 
@@ -4207,6 +4222,7 @@ export function initFightBand(opts: FightOptions = {}): void {
         const r = ROSTER[((i % ROSTER.length) + ROSTER.length) % ROSTER.length];
         applyRoster(a, r);
         a.enterT = 0; // 检查模式跳过登场动画，姓名牌不遮头
+        if (opts.demo) startDemoEntry(demoIdx); // 换英雄后按新体型/武器重排距离
         return r.name;
       },
       /** 当前 roster（名字 + 流派），便于外部列出 */
