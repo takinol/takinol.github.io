@@ -9,6 +9,8 @@ export default defineConfig({
   // 你的站点地址：GitHub Pages 免费域名
   site: 'https://takinol.github.io',
   integrations: [sitemap()],
+  // 开发工具条会遮挡画布底部，逐帧检查时碍事，关掉（只影响 dev，不影响构建）
+  devToolbar: { enabled: false },
   markdown: {
     // 支持 $$...$$ 块公式 与 $...$ 行内公式
     remarkPlugins: [remarkMath],

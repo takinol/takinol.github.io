@@ -1,0 +1,64 @@
+---
+/**
+ * 招式逐帧检查页（调试用）
+ * URL：/pose?move=hook&frac=0.6&fx=1
+ *   move = 招式 key（jab/cross/hook/.../spinKick/flyKick/scissorKick/hurtLight/...）
+ *   frac = 0~1 的进度，定格在那一帧
+ *   fx   = 1 时在定格画面上触发一次该招的命中特效（并冻结，供检查特效）
+ * 无页头、无目录，只有画布 —— 方便直接截图对比。
+ */
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pose · 逐帧检查</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f6f4ef;
+        overflow: hidden;
+      }
+      #pose-canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="pose-canvas"></canvas>
+    <script>
+      import { initFightBand } from '../scripts/fight';
+
+      const qs = new URLSearchParams(location.search);
+      // noHud=1：隐藏 canvas 顶部的招式标题条（角色图鉴等嵌入场景用）
+      initFightBand({ canvasId: 'pose-canvas', demo: true, forceVisible: true, hud: !qs.has('noHud') });
+
+      const api = () => (window as any).takinolFight?.demo;
+      const mv = qs.get('move');
+      const frac = Number(qs.get('frac'));
+      // who = ROSTER 索引，切换演示位角色（检查各流派剪影 / 动态件）
+      const who = Number(qs.get('who'));
+      // 把角色名写进标题，父页面（角色图鉴）可以直接读，无需硬编码名单
+      if (qs.has('who') && !Number.isNaN(who)) {
+        const nm = api()?.who(who);
+        if (nm) document.title = `${nm} · pose`;
+      }
+      if (mv) {
+        const d = api();
+        const item = d?.list.find((x) => x.key === mv);
+        if (d && item) {
+          d.go(item.i);
+          d.seek(qs.has('frac') && !Number.isNaN(frac) ? frac : 0.5);
+          // ?fx=1 定格触发命中特效（特效与画面一起被冻结，方便逐招检查特效）
+          if (qs.has('fx')) d.fx();
+        }
+      }
+    </script>
+  </body>
+</html>

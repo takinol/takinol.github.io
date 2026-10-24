@@ -112,7 +112,10 @@ import Base from '../layouts/Base.astro';
   <script>
     import { initFightBand } from '../scripts/fight';
 
-    initFightBand({ canvasId: 'demo-canvas', demo: true });
+    // ?auto=1 切换为 AI 自动对战模式（默认是逐招演示模式）
+    // forceVisible：无头浏览器里 IntersectionObserver 判定不稳定，调试页直接绕过可见性门控
+    const qs0 = new URLSearchParams(location.search);
+    initFightBand({ canvasId: 'demo-canvas', demo: !qs0.has('auto'), forceVisible: true });
 
     const api = () => (window as any).takinolFight?.demo;
 

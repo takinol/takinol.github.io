@@ -166,7 +166,36 @@ import Base from '../layouts/Base.astro';
       });
     };
 
+    // 角色名单从引擎读（ROSTER 有几个人就有几个选项，新增角色自动出现）
+    const fillPicks = () => {
+      const list = (window as any).takinolFight?.demo?.roster?.() ?? [];
+      if (!list.length) return;
+      const mk = (el: HTMLSelectElement, pick: number) => {
+        const keep = el.value;
+        el.innerHTML = '';
+        for (const r of list) {
+          const o = document.createElement('option');
+          o.value = String(r.i);
+          o.textContent = `${r.i + 1}. ${r.name}`;
+          el.appendChild(o);
+        }
+        el.value = keep;
+        if (!el.value) el.value = String(pick);
+      };
+      mk(leftEl, 0);
+      mk(rightEl, Math.min(1, list.length - 1));
+      rightEl.value = String(Math.min(3, list.length - 1));
+
+      // URL 参数：/arena?l=9&r=11 直接指定左右角色（角色图鉴的卡片链接用这个）
+      const q2 = new URLSearchParams(location.search);
+      const l = Number(q2.get('l'));
+      const r = Number(q2.get('r'));
+      if (!Number.isNaN(l) && q2.has('l')) leftEl.value = String(Math.max(0, Math.min(list.length - 1, l)));
+      if (!Number.isNaN(r) && q2.has('r')) rightEl.value = String(Math.max(0, Math.min(list.length - 1, r)));
+    };
+
     document.getElementById('start')?.addEventListener('click', start);
     start();
+    fillPicks();
   </script>
 </Base>

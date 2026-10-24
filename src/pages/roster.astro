@@ -1,0 +1,124 @@
+---
+/**
+ * 角色图鉴：一眼看全所有流派
+ * 每格是一个 /pose?who=N 的定格 iframe，角色名从 iframe 标题自动读取（新增角色自动出现）
+ * 点击卡片 → 进竞技场，左右分别为该角色与随机对手
+ */
+import Base from '../layouts/Base.astro';
+
+const SLOTS = Array.from({ length: 15 }, (_, i) => i);
+---
+
+<Base title="角色图鉴" description="全部流派的剪影一览，点卡片进竞技场对打">
+  <div class="container roster-page">
+    <header class="page-head">
+      <h1>角色图鉴</h1>
+      <p>
+        15 个流派按「剪影差异 + 武器轨迹 + 动态件类型」分化。每格都是实时渲染的定格画面
+        —— 点任意一张进竞技场，左边是它、右边随机对手。
+      </p>
+      <p class="hint">
+        想逐帧看某个招式：<code>/pose?who=13&amp;move=iai&amp;frac=0.5</code>
+        （who = 编号-1，move = 招式 key，加 <code>&amp;fx=1</code> 看特效）
+      </p>
+    </header>
+
+    <div class="roster-grid">
+      {
+        SLOTS.map((i) => (
+          <a class="roster-card" href={`/arena?l=${i}`} data-who={i}>
+            <iframe
+              src={`/pose?who=${i}&move=idle&frac=0.5&noHud=1`}
+              loading="lazy"
+              scrolling="no"
+              title={`roster-${i}`}
+            ></iframe>
+            <span class="roster-name">{i + 1}. 载入中…</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  <style is:global>
+    .roster-page {
+      padding-bottom: 60px;
+    }
+    .roster-page .hint {
+      font-size: 13px;
+      opacity: 0.7;
+    }
+    .roster-page code {
+      background: rgba(0, 0, 0, 0.06);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .roster-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .roster-card {
+      display: block;
+      text-decoration: none;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .roster-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    }
+    .roster-card iframe {
+      display: block;
+      width: 100%;
+      height: 170px;
+      border: 0;
+      background: #f6f4ef;
+    }
+    .roster-name {
+      display: block;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #222;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+    }
+  </style>
+
+  <script>
+    // 角色名从 iframe 的 document.title 读（pose 页写了「名字 · pose」），名单永远和引擎同步
+    const cards = document.querySelectorAll<HTMLAnchorElement>('.roster-card');
+    for (const card of cards) {
+      const frame = card.querySelector('iframe');
+      const label = card.querySelector('.roster-name');
+      const idx = card.dataset.who;
+      if (!frame || !label) continue;
+      const sync = () => {
+        try {
+          const t = frame.contentDocument?.title ?? '';
+          const nm = t.replace(/\s*·\s*pose$/, '');
+          if (nm) label.textContent = `${Number(idx) + 1}. ${nm}`;
+        } catch {
+          /* 跨域/未就绪就下次再试 */
+        }
+      };
+      frame.addEventListener('load', sync);
+      sync();
+    }
+
+    // 卡片链接带上随机对手
+    const total = cards.length;
+    for (const card of cards) {
+      const href = card.getAttribute('href') ?? '';
+      const l = Number(card.dataset.who ?? 0);
+      let r = Math.floor(Math.random() * total);
+      if (r === l) r = (r + 1) % total;
+      card.setAttribute('href', `${href}&r=${r}`);
+    }
+  </script>
+</Base>
