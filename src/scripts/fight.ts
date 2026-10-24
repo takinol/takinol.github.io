@@ -854,6 +854,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     kb: number;
     /** 被击后的踉跄剩余时间 */
     stagger: number;
+    /** 大伤害：踉跄后站不住要倒地 */
+    knockdown: boolean;
     /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
     armFront: 'B' | 'F';
     /** 布料摆动（被击打时衣服会飘） */
@@ -982,6 +984,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     emote: null,
     kb: 0,
     stagger: 0,
+    knockdown: false,
     armFront: 'F',
     sway: 0,
     invuln: 0,
@@ -1968,7 +1971,10 @@ export function initFightBand(opts: FightOptions = {}): void {
           }
 
           opp.flash = 1;
-          opp.kb = f.facing * h.knock;
+          // 大伤害：击退更远 + 标记「站不稳要倒地」
+          const bigHit = h.knock > 320;
+          opp.kb = f.facing * (h.knock + (bigHit ? 170 : 0));
+          if (bigHit) opp.knockdown = true;
           opp.sway = h.knock > 320 ? 1 : 0.55;
           f.comboTimer = 0.45;
           hitstop = Math.max(hitstop, atk.hitstop);
@@ -1995,7 +2001,7 @@ export function initFightBand(opts: FightOptions = {}): void {
               f.comboSteps = null;
               f.comboIndex = 0;
             }
-          } else if (Math.random() < 0.45) {
+          } else if (Math.random() < (opp.stagger >= 0.35 ? 0.9 : 0.45)) {
             const c = COMBOS[Math.floor(Math.random() * COMBOS.length)];
             f.comboSteps = c.steps;
             f.comboIndex = 0;
@@ -2028,8 +2034,16 @@ export function initFightBand(opts: FightOptions = {}): void {
           setState(f, 'stumble');
           f.cool = Math.max(f.cool, 0.3);
         } else {
-          setState(f, 'idle');
-          f.cool = Math.max(f.cool, rand(0.25, 0.8));
+          // 大伤害踉跄结束：站不住，向后倒
+          if (f.knockdown) {
+            f.knockdown = false;
+            startRagdoll(f);
+          } else {
+            setState(f, 
+'idle'
+);
+            f.cool = Math.max(f.cool, rand(0.25, 0.8));
+          }
         }
       }
 
