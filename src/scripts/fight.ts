@@ -229,9 +229,11 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_WIND = P({ lean: 0.2, head: -0.02, armUB: 0.9, armLB: 1.85, armUF: 1.0, armLF: 1.7, legUB: 0.45, legLB: -0.6, legUBD: 0, legUF: 0.3, legLF: -0.6, yaw: 0 });
-const SPIN_TURN = P({ lean: 0.14, head: 0.05, armUB: 0.6, armLB: 1.5, armUF: 1.05, armLF: 1.3, legUB: 0.85, legLB: -0.5, legUBD: 0.7, legUF: -0.12, legLF: 0.05, yaw: 2.4 });
-const SPIN_HIT = P({ lean: 0.08, head: 0.1, armUB: -0.5, armLB: 0.8, armUF: 0.5, armLF: 0.95, legUB: 1.35, legLB: 0.02, legUBD: 1.75, legUF: -0.12, legLF: 0.06, yaw: 3.6 });
+const SPIN_WIND = P({ lean: 0.18, head: -0.05, armUB: 0.85, armLB: 1.8, armUF: 1.0, armLF: 1.65, legUB: 0.3, legLB: -0.4, legUBD: 0, legUF: 0.35, legLF: -0.55, yaw: 0 });
+
+const SPIN_BACK = P({ lean: 0.08, head: 0.18, armUB: 0.35, armLB: 1.3, armUF: 0.9, armLF: 1.1, legUB: -0.8, legLB: -0.4, legUBD: -0.2, legUF: 0.08, legLF: -0.2, yaw: 3.14 });
+const SPIN_RETURN = P({ lean: 0.1, head: 0.05, armUB: 0.6, armLB: 1.4, armUF: 1.0, armLF: 1.3, legUB: -0.5, legLB: 0.2, legUBD: 0, legUF: 0.15, legLF: -0.1, yaw: 5.2 });
+const SPIN_HIT = P({ lean: -0.12, head: 0.22, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0.02, legUBD: -0.25, legUF: -0.04, legLF: 0.06, yaw: 3.14 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
@@ -284,7 +286,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.05, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SPIN_WIND }, { t: 0.42, pose: SPIN_TURN }, { t: 0.6, pose: SPIN_HIT }, { t: 0.74, pose: SPIN_HIT }, { t: 1, pose: SPIN_END }] },
+  spinKick: { dur: 1.05, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: SPIN_WIND }, { t: 0.4, pose: SPIN_BACK }, { t: 0.54, pose: SPIN_HIT }, { t: 0.68, pose: SPIN_HIT }, { t: 0.82, pose: SPIN_RETURN }, { t: 1, pose: SPIN_END }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -333,7 +335,7 @@ const ATTACKS: Record<string, Atk> = {
   sideKick: { part: 'footF', hits: [{ at: 0.54, dmg: [18, 27], reach: 1.35, knock: 430 }], hitstop: 0.08, react: 'heavy' },
   roundKick: { part: 'footF', hits: [{ at: 0.54, dmg: [16, 24], reach: 1.3, knock: 300 }], hitstop: 0.075, react: 'heavy' },
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
-  spinKick: { part: 'footB', hits: [{ at: 0.62, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
+  spinKick: { part: 'footB', hits: [{ at: 0.5, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
   flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
   scissorKick: {
     part: 'footF',
@@ -550,6 +552,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     stagger: number;
     /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
     armFront: 'B' | 'F';
+    /** 体型：游侠（瘦高带剑）或战士（宽厚） */
+    build: 'ranger' | 'warrior';
     /** 无敌帧剩余时间（闪避用） */
     invuln: number;
     minX: number;
@@ -598,7 +602,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     walkPhase: rand(0, 1),
     partner: i % 2 === 0 ? i + 1 : i - 1,
     skin,
-    scale: rand(0.94, 1.06),
+    scale: (i % 2 === 0 ? rand(0.88, 0.95) : rand(1.0, 1.08)),
+    build: (i % 2 === 0 ? 'warrior' : 'ranger') as 'warrior' | 'ranger',
     aggression: rand(0.45, 0.95),
     guardChance: rand(0.35, 0.75),
     preferDist: rand(29, 34),
@@ -611,6 +616,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     kb: 0,
     stagger: 0,
     armFront: 'F',
+    build: 'warrior',
     invuln: 0,
     minX: 20,
     maxX: 9999,
@@ -1330,7 +1336,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     body: string,
     trim: string,
     expr: 'normal' | 'hurt' | 'down',
-    facing: number
+    facing: number,
+    camFace: number
   ) => {
     const rx = L.headR * k;
     const ry = (L.headR + 0.6) * k;
@@ -1410,7 +1417,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     trim: string,
     dark: string,
     expr: 'normal' | 'hurt' | 'down',
-    facing: number
+    facing: number,
+    camFace: number,
+    gear: 'ranger' | 'warrior'
   ) => {
     const pelvis = get('pelvis');
     const chest = get('chest');
@@ -1471,7 +1480,44 @@ export function initFightBand(opts: FightOptions = {}): void {
     const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.1, y: chest.y + (chest.y - pelvis.y) * 0.1, z: 0 };
     limb(neckA, { x: head.x - facing * 3 * k, y: head.y + L.headR * k * 0.7, z: 0 }, 3.5 * k, 3.2 * k, dark);
 
-    headShape(head, k, body, trim, expr, facing);
+    headShape(head, k, body, trim, expr, facing, camFace);
+
+    // 装备：游侠背剑 + 围巾；战士肩甲
+    if (gear === 'ranger') {
+      const sB = get('shoulderB');
+      const hB = get('hipB');
+      const dxg = sB.x - hB.x;
+      const dyg = sB.y - hB.y;
+      const lg = Math.hypot(dxg, dyg) || 1;
+      const ux = dxg / lg;
+      const uy = dyg / lg;
+      // 剑鞘
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 3.4 * k;
+      ctx.beginPath();
+      ctx.moveTo(sB.x - ux * 3, sB.y - uy * 3);
+      ctx.lineTo(hB.x + ux * 1.5, hB.y + uy * 1.5);
+      ctx.stroke();
+      // 剑柄
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 2.2 * k;
+      ctx.beginPath();
+      ctx.moveTo(sB.x + ux * 1.5, sB.y + uy * 1.5);
+      ctx.lineTo(sB.x + ux * 9, sB.y + uy * 9);
+      ctx.stroke();
+      // 围巾
+      ctx.fillStyle = trim;
+      ctx.beginPath();
+      ctx.moveTo(neckA.x, neckA.y - 1 * k);
+      ctx.lineTo(neckA.x - facing * 7 * k, neckA.y + 3 * k);
+      ctx.lineTo(neckA.x - facing * 2 * k, neckA.y + 6 * k);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // 战士肩甲
+      jointCap(get('shoulderF'), 4.6 * k, trim);
+      jointCap(get('shoulderB'), 4.6 * k, trim);
+    }
 
     drawLeg('F', body);
     drawArm(backArmIsFarther ? 'F' : 'B', body);
@@ -1485,6 +1531,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     const expr: 'normal' | 'hurt' | 'down' =
       f.state === 'down' ? 'down' : f.state === 'hurtLight' || f.state === 'hurtHeavy' || flashing ? 'hurt' : 'normal';
 
+    // 体型：战士更宽（宽度放大），游侠更瘦
+    const bulk = f.build === 'warrior' ? 1.22 : 0.84;
+    const camFace = Math.cos(f.pose.yaw || 0);
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
@@ -1530,7 +1579,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       );
     } else {
       const { world } = place(f);
-      drawFigure((key) => world[key as keyof Joints], f.scale, body, trim, dark, expr, f.facing);
+      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, camFace, f.build);
     }
     ctx.restore();
     ctx.restore();

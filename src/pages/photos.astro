@@ -71,23 +71,237 @@ const files = readdirSync(photosDir)
 ---
 
 <Base title="照片" description="小猫的照片墙">
-  <!-- 背景涂鸦层：美式街头涂鸦元素 × 孟菲斯配色，随机散落 + 随机浮动 -->
-  <div class="graffiti-bg" id="graffiti-bg" aria-hidden="true">
-    <span class="gz gz-splat" style="color: var(--pink)"></span>
-    <span class="gz gz-splat" style="color: var(--blue); --gsz: 64px"></span>
-    <span class="gz gz-splat" style="color: var(--lime); --gsz: 76px"></span>
-    <span class="gz gz-star outline" style="color: var(--yellow)"></span>
-    <span class="gz gz-star outline" style="color: var(--pink); --gsz: 24px"></span>
-    <span class="gz gz-star" style="color: var(--blue); --gsz: 30px"></span>
-    <span class="gz gz-arrow" style="color: var(--yellow)"></span>
-    <span class="gz gz-arrow" style="color: var(--lime); --gsz: 52px"></span>
-    <span class="gz gz-bubble" style="color: var(--pink)"></span>
-    <span class="gz gz-bubble" style="color: var(--blue); --gsz: 34px"></span>
-    <span class="gz gz-bubble" style="color: var(--yellow); --gsz: 56px"></span>
-    <span class="gz gz-tagline" style="color: var(--pink)"></span>
-    <span class="gz gz-tagline" style="color: var(--blue); --gsz: 64px"></span>
-    <span class="gz gz-crown" style="color: var(--yellow)"></span>
-    <span class="gz gz-crown" style="color: var(--pink); --gsz: 30px"></span>
+  <!-- 孟菲斯背景层：Sottsass Bacterio 细菌纹 / 水磨石 / 棋盘格 / 撞色条纹 / 锯齿 / 圆点 /
+       Du Pasquier 几何拼贴网格 + 层压板黑边，随机散落 + 随机浮动 -->
+  <div class="memphis-bg" id="memphis-bg" aria-hidden="true">
+    <svg width="0" height="0" style="position:absolute" focusable="false">
+      <defs>
+        <!-- 1) Sottsass 的 Bacterio 细菌螺旋纹（黑） -->
+        <pattern id="mpBacterio" width="44" height="44" patternUnits="userSpaceOnUse">
+          <rect width="44" height="44" fill="#FFF5EE"/>
+          <g fill="none" stroke="#070D0D" stroke-width="2.6" stroke-linecap="round">
+            <path d="M11 11 m-5 0 a5 5 0 1 0 10 0 a3.8 3.8 0 1 0 -7.6 0 a2.6 2.6 0 1 0 5.2 0"/>
+            <path d="M33 33 m-5 0 a5 5 0 1 0 10 0 a3.8 3.8 0 1 0 -7.6 0 a2.6 2.6 0 1 0 5.2 0"/>
+            <path d="M33 11 m-3.4 0 a3.4 3.4 0 1 0 6.8 0 a2.6 2.6 0 1 0 -5.2 0"/>
+            <path d="M11 33 m-3.4 0 a3.4 3.4 0 1 0 6.8 0 a2.6 2.6 0 1 0 -5.2 0"/>
+          </g>
+        </pattern>
+        <!-- 2) Bacterio 粉色版 -->
+        <pattern id="mpBacterioPink" width="36" height="36" patternUnits="userSpaceOnUse">
+          <rect width="36" height="36" fill="#FFF5EE"/>
+          <g fill="none" stroke="#DE0C62" stroke-width="2.4" stroke-linecap="round">
+            <path d="M9 9 m-4 0 a4 4 0 1 0 8 0 a3 3 0 1 0 -6 0 a2 2 0 1 0 4 0"/>
+            <path d="M27 27 m-4 0 a4 4 0 1 0 8 0 a3 3 0 1 0 -6 0 a2 2 0 1 0 4 0"/>
+          </g>
+        </pattern>
+        <!-- 3) 水磨石 Terrazzo -->
+        <pattern id="mpTerrazzo" width="80" height="80" patternUnits="userSpaceOnUse">
+          <rect width="80" height="80" fill="#FFF5EE"/>
+          <circle cx="12" cy="16" r="4" fill="#DE0C62"/>
+          <circle cx="30" cy="8" r="2.6" fill="#2242C7"/>
+          <circle cx="48" cy="20" r="3.4" fill="#0FA3A3"/>
+          <circle cx="66" cy="10" r="2.2" fill="#FFDF22"/>
+          <circle cx="8" cy="38" r="2.4" fill="#FFDF22"/>
+          <circle cx="26" cy="30" r="3.6" fill="#070D0D"/>
+          <circle cx="44" cy="42" r="2.8" fill="#FF3E2D"/>
+          <circle cx="62" cy="34" r="4.2" fill="#2242C7"/>
+          <circle cx="76" cy="50" r="2.6" fill="#DE0C62"/>
+          <circle cx="16" cy="60" r="2.2" fill="#0FA3A3"/>
+          <circle cx="36" cy="54" r="3.2" fill="#DE0C62"/>
+          <circle cx="56" cy="66" r="2.6" fill="#FFDF22"/>
+          <circle cx="72" cy="72" r="3.4" fill="#070D0D"/>
+          <circle cx="10" cy="74" r="2.6" fill="#FF3E2D"/>
+          <circle cx="48" cy="74" r="2.2" fill="#0FA3A3"/>
+          <path d="M20 12 l3 3 1.6-3.4 1.8 3.8 2.4-2.2" fill="none" stroke="#070D0D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M58 60 l2.6 2.6 1.4-3 1.6 3.4" fill="none" stroke="#070D0D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </pattern>
+        <!-- 4) 黑白棋盘格（一格换成珊瑚红） -->
+        <pattern id="mpChecker" width="60" height="60" patternUnits="userSpaceOnUse">
+          <rect width="60" height="60" fill="#FFF5EE"/>
+          <rect width="30" height="30" fill="#070D0D"/>
+          <rect x="30" y="30" width="30" height="30" fill="#070D0D"/>
+          <rect x="30" y="0" width="30" height="30" fill="#FF3E2D"/>
+        </pattern>
+        <!-- 5) 撞色斜条纹：粉/黄 -->
+        <linearGradient id="mpGradPY" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#FFDF22"/><stop offset="0.5" stop-color="#FFDF22"/>
+          <stop offset="0.5" stop-color="#DE0C62"/><stop offset="1" stop-color="#DE0C62"/>
+        </linearGradient>
+        <!-- 6) 撞色斜条纹：钴蓝/青 -->
+        <linearGradient id="mpGradBT" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2242C7"/><stop offset="0.5" stop-color="#2242C7"/>
+          <stop offset="0.5" stop-color="#0FA3A3"/><stop offset="1" stop-color="#0FA3A3"/>
+        </linearGradient>
+        <!-- 7) 撞色斜条纹：青柠/黑 -->
+        <linearGradient id="mpGradLB" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#9ACD32"/><stop offset="0.5" stop-color="#9ACD32"/>
+          <stop offset="0.5" stop-color="#070D0D"/><stop offset="1" stop-color="#070D0D"/>
+        </linearGradient>
+        <!-- 8) 圆点 confetti -->
+        <pattern id="mpDots" width="64" height="64" patternUnits="userSpaceOnUse">
+          <rect width="64" height="64" fill="#FFF5EE"/>
+          <circle cx="16" cy="16" r="6" fill="#DE0C62"/>
+          <circle cx="48" cy="16" r="4" fill="#0FA3A3"/>
+          <circle cx="32" cy="40" r="7" fill="#FFDF22"/>
+          <circle cx="8" cy="52" r="3" fill="#2242C7"/>
+          <circle cx="56" cy="52" r="5" fill="#070D0D"/>
+        </pattern>
+        <!-- 9) 锯齿 zigzag -->
+        <pattern id="mpZig" width="40" height="40" patternUnits="userSpaceOnUse">
+          <rect width="40" height="40" fill="#FFF5EE"/>
+          <path d="M0 8 L10 18 L20 8 L30 18 L40 8" fill="none" stroke="#FF3E2D" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/>
+          <path d="M0 28 L10 38 L20 28 L30 38 L40 28" fill="none" stroke="#070D0D" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/>
+        </pattern>
+        <!-- 10) Du Pasquier 几何拼贴网格 -->
+        <pattern id="mpPlaid" width="80" height="80" patternUnits="userSpaceOnUse">
+          <rect width="80" height="80" fill="#FFF5EE"/>
+          <rect x="0" y="0" width="24" height="24" fill="#FFDF22"/>
+          <rect x="24" y="24" width="28" height="28" fill="#DE0C62"/>
+          <rect x="52" y="0" width="28" height="24" fill="#0FA3A3"/>
+          <rect x="0" y="52" width="24" height="28" fill="#2242C7"/>
+          <rect x="52" y="52" width="28" height="28" fill="#FFDF22"/>
+          <path d="M24 0 V80 M52 0 V80 M0 24 H80 M0 52 H80" stroke="#070D0D" stroke-width="4"/>
+        </pattern>
+        <!-- 11) 波浪线 spaghetti -->
+        <pattern id="mpWaves" width="60" height="40" patternUnits="userSpaceOnUse">
+          <rect width="60" height="40" fill="#FFF5EE"/>
+          <path d="M0 10 Q15 0 30 10 T60 10" fill="none" stroke="#DE0C62" stroke-width="3" stroke-linecap="round"/>
+          <path d="M0 20 Q15 10 30 20 T60 20" fill="none" stroke="#2242C7" stroke-width="3" stroke-linecap="round"/>
+          <path d="M0 30 Q15 20 30 30 T60 30" fill="none" stroke="#FFDF22" stroke-width="3" stroke-linecap="round"/>
+        </pattern>
+        <!-- 12) 黑底 Bacterio：白色细菌纹（黑白是孟菲斯的基底色） -->
+        <pattern id="mpBacterioInv" width="44" height="44" patternUnits="userSpaceOnUse">
+          <rect width="44" height="44" fill="#070D0D"/>
+          <g fill="none" stroke="#FFF5EE" stroke-width="2.6" stroke-linecap="round">
+            <path d="M11 11 m-5 0 a5 5 0 1 0 10 0 a3.8 3.8 0 1 0 -7.6 0 a2.6 2.6 0 1 0 5.2 0"/>
+            <path d="M33 33 m-5 0 a5 5 0 1 0 10 0 a3.8 3.8 0 1 0 -7.6 0 a2.6 2.6 0 1 0 5.2 0"/>
+            <path d="M33 11 m-3.4 0 a3.4 3.4 0 1 0 6.8 0 a2.6 2.6 0 1 0 -5.2 0"/>
+            <path d="M11 33 m-3.4 0 a3.4 3.4 0 1 0 6.8 0 a2.6 2.6 0 1 0 -5.2 0"/>
+          </g>
+        </pattern>
+        <!-- 13) 黑白斜条纹 -->
+        <linearGradient id="mpGradBW" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#070D0D"/><stop offset="0.5" stop-color="#070D0D"/>
+          <stop offset="0.5" stop-color="#FFF5EE"/><stop offset="1" stop-color="#FFF5EE"/>
+        </linearGradient>
+        <!-- 14) 黑底彩点 confetti -->
+        <pattern id="mpDotsInv" width="64" height="64" patternUnits="userSpaceOnUse">
+          <rect width="64" height="64" fill="#070D0D"/>
+          <circle cx="16" cy="16" r="6" fill="#DE0C62"/>
+          <circle cx="48" cy="16" r="4" fill="#0FA3A3"/>
+          <circle cx="32" cy="40" r="7" fill="#FFDF22"/>
+          <circle cx="8" cy="52" r="3" fill="#2242C7"/>
+          <circle cx="56" cy="52" r="5" fill="#FFF5EE"/>
+        </pattern>
+        <!-- 15) 黑底白色细网格 -->
+        <pattern id="mpGridInv" width="24" height="24" patternUnits="userSpaceOnUse">
+          <rect width="24" height="24" fill="#070D0D"/>
+          <path d="M24 0 V24 M0 24 H24" fill="none" stroke="#FFF5EE" stroke-width="2"/>
+        </pattern>
+      </defs>
+    </svg>
+
+    <!-- 图案方块（层压板图案 swatch，带黑边 = 层压板封边） -->
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:124px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpBacterio)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:92px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpBacterioPink)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:156px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpTerrazzo)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:108px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpChecker)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:132px;--gar:0.64">
+      <rect width="100" height="100" fill="url(#mpGradPY)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:100px;--gar:0.62">
+      <rect width="100" height="100" fill="url(#mpGradBT)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:92px;--gar:0.58">
+      <rect width="100" height="100" fill="url(#mpGradLB)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:118px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpDots)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:134px;--gar:0.6">
+      <rect width="100" height="100" fill="url(#mpZig)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:144px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpPlaid)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:128px;--gar:0.62">
+      <rect width="100" height="100" fill="url(#mpWaves)"/>
+    </svg>
+
+    <!-- 几何实心块（孟菲斯家具的锥/柱/圆/半圆） -->
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:78px;--gar:1">
+      <circle cx="50" cy="50" r="46" fill="#DE0C62"/>
+    </svg>
+    <svg class="mp" viewBox="0 0 100 100" style="--gsz:54px;--gar:1">
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#2242C7" stroke-width="12"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:102px;--gar:1">
+      <circle cx="50" cy="50" r="47" fill="url(#mpDots)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:74px;--gar:1">
+      <path d="M50 8 L92 88 L8 88 Z" fill="#FFDF22"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:52px;--gar:1">
+      <path d="M50 6 L94 92 L6 92 Z" fill="#FF3E2D"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:92px;--gar:0.56">
+      <path d="M8 50 A42 42 0 0 1 92 50 Z" fill="#0FA3A3"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:74px;--gar:1.28">
+      <rect x="20" y="30" width="60" height="55" fill="#2242C7"/>
+      <ellipse cx="50" cy="30" rx="30" ry="10" fill="#0FA3A3"/>
+      <ellipse cx="50" cy="85" rx="30" ry="10" fill="#070D0D" opacity="0.25"/>
+    </svg>
+    <svg class="mp" viewBox="0 0 120 60" preserveAspectRatio="none" style="--gsz:148px;--gar:0.42">
+      <path d="M4 30 Q32 4 60 30 T116 30" fill="none" stroke="#DE0C62" stroke-width="9" stroke-linecap="round"/>
+      <path d="M4 44 Q32 18 60 44 T116 44" fill="none" stroke="#070D0D" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+
+    <!-- 黑色系图案块（孟菲斯黑白基底 + 撞色点缀） -->
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:112px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpBacterioInv)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:96px;--gar:0.6">
+      <rect width="100" height="100" fill="url(#mpGradBW)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:126px;--gar:1">
+      <rect width="100" height="100" fill="url(#mpDotsInv)"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" preserveAspectRatio="none" style="--gsz:88px;--gar:0.72">
+      <rect width="100" height="100" fill="url(#mpGridInv)"/>
+    </svg>
+
+    <!-- 纯黑几何块（与白色块形成孟菲斯黑白对比） -->
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:66px;--gar:1">
+      <circle cx="50" cy="50" r="46" fill="#070D0D"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:56px;--gar:1">
+      <path d="M50 6 L94 92 L6 92 Z" fill="#070D0D"/>
+    </svg>
+    <svg class="mp" viewBox="0 0 100 100" style="--gsz:58px;--gar:1">
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#070D0D" stroke-width="12"/>
+    </svg>
+    <svg class="mp frame" viewBox="0 0 100 100" style="--gsz:64px;--gar:0.6">
+      <path d="M6 50 A44 44 0 0 1 94 50 Z" fill="#070D0D"/>
+    </svg>
+
+    <!-- 浮动艺术字体：孟菲斯式大字标签 -->
+    <div class="mp mp-type frame" style="--tbg:#FFDF22;--fs:34px">MEMPHIS</div>
+    <div class="mp mp-type frame" style="--tbg:#DE0C62;--fs:30px">MILANO</div>
+    <div class="mp mp-type frame" style="--tbg:#FFF5EE;--fs:32px">1981</div>
+    <div class="mp mp-type frame" style="--tbg:#0FA3A3;--fs:34px">PLAY</div>
+    <div class="mp mp-type frame" style="--tbg:#9ACD32;--fs:28px">POP!</div>
+    <div class="mp mp-type frame" style="--tbg:#FF3E2D;--fs:44px">!</div>
+    <div class="mp mp-type tx-outline" style="--tfg:#FFDF22;--fs:38px">CIAO</div>
+    <div class="mp mp-type tx-outline" style="--tfg:#DE0C62;--fs:36px">FUN</div>
   </div>
   <div class="wall" id="wall">
     <div class="wall-title"></div>
@@ -130,152 +344,77 @@ const files = readdirSync(photosDir)
 </Base>
 
 <style>
-  /* ---------- 背景美式涂鸦元素（孟菲斯配色）----------
-     喷漆泼溅 / 涂鸦星星 / 街头箭头 / 气泡圈 / 涂鸦线
-     随机散落 + 各自随机浮动，JS 只负责随机摆放和浮动参数 */
-  .graffiti-bg {
+  /* ---------- 背景孟菲斯层 ----------
+     正宗 Memphis 语汇：Bacterio 细菌纹 / 水磨石 / 棋盘格 / 撞色斜条纹 /
+     圆点 / 锯齿 / 几何拼贴网格 / 波浪线 + 锥柱圆半圆几何块，
+     全部带层压板式黑边；随机散落 + 各自随机浮动 */
+  .memphis-bg {
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
   }
-  .gz {
+  .mp {
     position: absolute;
     left: var(--gx);
     top: var(--gy);
-    opacity: var(--go, 0.5);
-    animation: gzFloat var(--gdur, 6s) ease-in-out var(--gdelay, 0s) infinite alternate;
+    width: var(--gsz, 100px);
+    height: calc(var(--gsz, 100px) * var(--gar, 1));
+    opacity: var(--go, 0.7);
+    display: block;
+    overflow: visible;
+    animation: mpFloat var(--gdur, 7s) ease-in-out var(--gdelay, 0s) infinite alternate;
+    will-change: transform;
   }
-  /* 每个元素浮动轨迹不同：主动画上下飘，::after 反向左右飘，合成随机漂移感 */
-  @keyframes gzFloat {
+  .mp svg,
+  .mp {
+    filter: drop-shadow(3px 4px 0 rgba(7, 13, 13, 0.18)); /* 层压板拼贴的投影感 */
+  }
+  /* 层压板黑边（真实 Memphis 家具都有塑料层压板封边） */
+  .mp.frame {
+    outline: 3px solid #070d0d;
+  }
+  /* 浮动艺术字体：孟菲斯式大字标签
+     - 实心：黑字 + 高饱和色块 + 黑边
+     - 空心：透明底 + 彩色字 + 黑描边（街头海报风） */
+  .mp.mp-type {
+    width: auto;
+    height: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px 8px;
+    font-family: var(--font-sans);
+    font-weight: 900;
+    font-size: var(--fs, 32px);
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #070d0d;
+    background: var(--tbg, #ffdf22);
+  }
+  .mp.mp-type.tx-outline {
+    background: transparent;
+    color: var(--tfg, #de0c62);
+    -webkit-text-stroke: 2.5px #070d0d;
+    paint-order: stroke fill;
+    outline: none;
+    filter: drop-shadow(2px 3px 0 rgba(7, 13, 13, 0.22));
+  }
+  @keyframes mpFloat {
     from {
       transform: translate(0, 0) rotate(var(--grot, 0deg)) scale(1);
     }
     to {
-      transform: translate(var(--gdx, 0px), var(--gdy, 14px)) rotate(calc(var(--grot, 0deg) + var(--gspin, 8deg)))
+      transform: translate(var(--gdx, 0px), var(--gdy, 16px)) rotate(calc(var(--grot, 0deg) + var(--gspin, 10deg)))
         scale(var(--gscale, 1.06));
     }
   }
-  /* 孟菲斯色卡变量 */
-  .gz {
-    --pink: #de0c62;
-    --blue: #2242c7;
-    --yellow: #ffdf22;
-    --lime: #9acd32;
-  }
-
-  /* 1) 喷漆泼溅：一大一小两团喷点 + 飞沫（radial-gradient 堆叠） */
-  .gz-splat {
-    width: var(--gsz, 90px);
-    height: var(--gsz, 90px);
-    background:
-      radial-gradient(circle at 50% 50%, currentColor 0 34%, transparent 36%),
-      radial-gradient(circle at 78% 24%, currentColor 0 9%, transparent 11%),
-      radial-gradient(circle at 16% 72%, currentColor 0 7%, transparent 9%),
-      radial-gradient(circle at 70% 82%, currentColor 0 5%, transparent 7%),
-      radial-gradient(circle at 88% 60%, currentColor 0 4%, transparent 6%),
-      radial-gradient(circle at 30% 12%, currentColor 0 3.5%, transparent 5.5%),
-      radial-gradient(circle at 12% 34%, currentColor 0 3%, transparent 5%),
-      radial-gradient(circle at 58% 6%, currentColor 0 2.5%, transparent 4.5%);
-    filter: blur(0.4px); /* 喷漆的轻微雾边 */
-  }
-  .gz-splat::after {
-    /* 喷漆罐拖尾 */
-    content: '';
-    position: absolute;
-    right: -46%;
-    top: 30%;
-    width: 46%;
-    height: 10%;
-    border-radius: 50%;
-    background: currentColor;
-    transform: rotate(-24deg);
-    opacity: 0.45;
-  }
-
-  /* 2) 涂鸦星星（街头四角星 sparkle） */
-  .gz-star {
-    width: var(--gsz, 34px);
-    height: var(--gsz, 34px);
-    background: currentColor;
-    clip-path: polygon(
-      50% 0%,
-      61% 39%,
-      100% 50%,
-      61% 61%,
-      50% 100%,
-      39% 61%,
-      0% 50%,
-      39% 39%
-    );
-  }
-  /* 涂鸦星星常带黑色描边感 —— 用双层：外层深色偏移 */
-  .gz-star.outline::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: #070d0d;
-    clip-path: inherit;
-    transform: translate(2.5px, 2.5px);
-    z-index: -1;
-  }
-
-  /* 3) 街头箭头（graffiti arrow）：粗描边折角箭头 */
-  .gz-arrow {
-    width: var(--gsz, 70px);
-    height: calc(var(--gsz, 70px) * 0.62);
-    background: currentColor;
-    clip-path: polygon(
-      0% 55%,
-      55% 55%,
-      55% 25%,
-      100% 62%,
-      55% 100%,
-      55% 70%,
-      0% 70%
-    );
-    filter: drop-shadow(2.5px 2.5px 0 #070d0d); /* 涂鸦黑描边 */
-  }
-
-  /* 4) 气泡圈（throw-up 气泡字母的抽象圆环）：粗环 + 黑描边 */
-  .gz-bubble {
-    width: var(--gsz, 46px);
-    height: var(--gsz, 46px);
-    border-radius: 50%;
-    border: calc(var(--gsz, 46px) * 0.24) solid currentColor;
-    filter: drop-shadow(2px 3px 0 #070d0d);
-  }
-
-  /* 5) 涂鸦波浪签线（tag squiggle）：粗笔刷曲线 */
-  .gz-tagline {
-    width: var(--gsz, 80px);
-    height: calc(var(--gsz, 80px) * 0.3);
-    background: radial-gradient(circle at 6px -3px, transparent 7px, currentColor 7.5px, currentColor 12.5px, transparent 13px);
-    background-size: 18px 18px;
-    filter: drop-shadow(1.5px 2px 0 #070d0d);
-  }
-
-  /* 6) 皇冠（涂鸦之王 crown，街头常见 tag 符号） */
-  .gz-crown {
-    width: var(--gsz, 40px);
-    height: calc(var(--gsz, 40px) * 0.72);
-    background: currentColor;
-    clip-path: polygon(
-      0% 100%,
-      8% 30%,
-      30% 62%,
-      50% 0%,
-      70% 62%,
-      92% 30%,
-      100% 100%
-    );
-    filter: drop-shadow(2px 2.5px 0 #070d0d);
-  }
-
   @media (max-width: 640px) {
-    .gz {
-      opacity: calc(var(--go, 0.5) * 0.6); /* 手机上更淡 */
+    .mp {
+      opacity: calc(var(--go, 0.7) * 0.65); /* 手机上淡一点，不抢照片 */
     }
   }
 
@@ -577,27 +716,28 @@ const files = readdirSync(photosDir)
   const wall = document.getElementById('wall');
   const photos = Array.from(wall?.querySelectorAll('.photo') ?? []);
 
-  // 背景涂鸦：随机散落 + 随机浮动（每次刷新/打开都重新随机分布）
+  // 背景孟菲斯元素：随机散落 + 随机浮动（每次刷新/打开都重新随机分布）
   {
-    const bg = document.getElementById('graffiti-bg');
+    const bg = document.getElementById('memphis-bg');
     if (bg) {
-      const items = Array.from(bg.querySelectorAll('.gz')) as HTMLElement[];
+      const items = Array.from(bg.querySelectorAll('.mp')) as HTMLElement[];
       items.forEach((el) => {
-        const gsz = parseFloat(getComputedStyle(el).getPropertyValue('--gsz')) || 40;
-        // 散落范围：全屏，边缘留一点余量避免被裁掉
-        const x = Math.random() * Math.max(0, window.innerWidth - gsz - 40) + 20;
-        const y = Math.random() * Math.max(0, window.innerHeight - gsz - 100) + 20; // 底部避开访客条
+        // 用元素实际宽高计算散落范围（SVG 块和字体 div 通用）
+        const w = el.offsetWidth || 80;
+        const h = el.offsetHeight || 80;
+        const x = Math.random() * Math.max(0, window.innerWidth - w - 40) + 20;
+        const y = Math.random() * Math.max(0, window.innerHeight - h - 100) + 20; // 底部避开访客条
         el.style.setProperty('--gx', x.toFixed(0) + 'px');
         el.style.setProperty('--gy', y.toFixed(0) + 'px');
         // 每个元素自己的浮动参数：幅度、周期、延迟、旋转、缩放都随机
-        el.style.setProperty('--gdx', ((Math.random() - 0.5) * 46).toFixed(0) + 'px');
-        el.style.setProperty('--gdy', ((Math.random() - 0.5) * 40).toFixed(0) + 'px');
-        el.style.setProperty('--grot', ((Math.random() - 0.5) * 50).toFixed(0) + 'deg');
-        el.style.setProperty('--gspin', ((Math.random() - 0.5) * 22).toFixed(0) + 'deg');
-        el.style.setProperty('--gscale', (1 + Math.random() * 0.18).toFixed(2));
-        el.style.setProperty('--gdur', (4 + Math.random() * 5).toFixed(1) + 's');
-        el.style.setProperty('--gdelay', (-Math.random() * 6).toFixed(1) + 's'); // 负延迟：一进来各自已在浮动中
-        el.style.setProperty('--go', (0.3 + Math.random() * 0.35).toFixed(2));
+        el.style.setProperty('--gdx', ((Math.random() - 0.5) * 52).toFixed(0) + 'px');
+        el.style.setProperty('--gdy', ((Math.random() - 0.5) * 44).toFixed(0) + 'px');
+        el.style.setProperty('--grot', ((Math.random() - 0.5) * 46).toFixed(0) + 'deg');
+        el.style.setProperty('--gspin', ((Math.random() - 0.5) * 26).toFixed(0) + 'deg');
+        el.style.setProperty('--gscale', (1 + Math.random() * 0.16).toFixed(2));
+        el.style.setProperty('--gdur', (5 + Math.random() * 6).toFixed(1) + 's');
+        el.style.setProperty('--gdelay', (-Math.random() * 7).toFixed(1) + 's'); // 负延迟：一进来各自已在浮动中
+        el.style.setProperty('--go', (0.65 + Math.random() * 0.3).toFixed(2)); // 色彩轰炸：偏饱和
       });
     }
   }
