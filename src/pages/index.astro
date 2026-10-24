@@ -38,6 +38,10 @@ const PER_PAGE = 8;
 
   <!-- 小人打架：一行像素小人两两对打 -->
   <div class="container">
+    <div class="fight-hud" aria-hidden="true">
+      <span class="hud-left" id="hud-left">— VS —</span>
+      <span class="hud-right" id="hud-right">— VS —</span>
+    </div>
     <section class="fight-band" id="fight-band" aria-hidden="true">
       <canvas id="fight-canvas"></canvas>
     </section>
@@ -117,5 +121,48 @@ const PER_PAGE = 8;
   <script>
     import { initFightBand } from '../scripts/fight';
     initFightBand();
+
+    // 方框外的 VS 角标：左上左对、右上右对（读取引擎当前在场角色）
+    const hudL = document.getElementById('hud-left') as HTMLElement | null;
+    const hudR = document.getElementById('hud-right') as HTMLElement | null;
+    const updateHud = () => {
+      const names = (window as any).takinolFight?.matchup?.() ?? [];
+      if (!hudL || !hudR) return;
+      if (names.length >= 4) {
+        hudL.textContent = `${names[0]}  VS  ${names[1]}`;
+        hudR.textContent = `${names[2]}  VS  ${names[3]}`;
+        hudR.style.display = '';
+      } else if (names.length === 2) {
+        hudL.textContent = `${names[0]}  VS  ${names[1]}`;
+        hudR.style.display = 'none';
+      }
+    };
+    updateHud();
+    setInterval(updateHud, 400);
   </script>
+
+  <style is:global>
+    .fight-hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 18px 2px 6px;
+      font-family: 'STXingkai', 'Xingkai SC', 'KaiTi', 'STKaiti', 'Microsoft YaHei', serif;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .fight-hud span {
+      background: linear-gradient(90deg, #8B7BB8, #C98FB5);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    @media (max-width: 640px) {
+      .fight-hud {
+        margin-top: 12px;
+        font-size: 13px;
+      }
+    }
+  </style>
 </Base>

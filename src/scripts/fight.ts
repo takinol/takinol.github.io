@@ -3696,35 +3696,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     }
     ctx.globalAlpha = 1;
 
-    // 主页对战角标：左上显示左对、右上显示右对（艺术字体 + 梦幻渐变）
-    if (!opts.demo && opts.hud !== false && fighters.length >= 2) {
-      const vsFont = `bold 15px 'STXingkai','Xingkai SC','KaiTi','STKaiti','Microsoft YaHei',serif`;
-      const drawVs = (text: string, x: number, align: 'left' | 'right' | 'center') => {
-        ctx.save();
-        ctx.textAlign = align;
-        ctx.textBaseline = 'top';
-        ctx.font = vsFont;
-        ctx.lineWidth = 3;
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(30,18,44,0.55)';
-        ctx.strokeText(text, x, 8);
-        const grad = ctx.createLinearGradient(x - 90, 0, x + 90, 0);
-        grad.addColorStop(0, '#FF9DE2');
-        grad.addColorStop(0.45, '#B388FF');
-        grad.addColorStop(1, '#FFE082');
-        ctx.shadowColor = 'rgba(255,150,220,0.9)';
-        ctx.shadowBlur = 10;
-        ctx.fillStyle = grad;
-        ctx.fillText(text, x, 8);
-        ctx.restore();
-      };
-      if (fighters.length >= 4) {
-        drawVs(`${fighters[0].name}  VS  ${fighters[1].name}`, 14, 'left');
-        drawVs(`${fighters[2].name}  VS  ${fighters[3].name}`, W - 14, 'right');
-      } else {
-        drawVs(`${fighters[0].name}  VS  ${fighters[1].name}`, W / 2, 'center');
-      }
-    }
     // 演示模式：顶部显示当前招式名与序号
     if (opts.demo && opts.hud !== false) {
       const e = DEMO_LIST[demoIdx];
@@ -3819,6 +3790,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       })),
     /** 结束外部控制，回到本地 AI */
     reset: () => setController(null),
+    /** 当前在场角色名（按顺序），供主页角标显示 */
+    matchup: () => fighters.map((f) => f.name),
     /** 停止引擎（重新开打前调用） */
     destroy: () => {
       cancelAnimationFrame(rafId);
