@@ -43,6 +43,13 @@ export interface Pose {
   lift: number;
   /** 整体转身角度（弧度），用横向缩放模拟转体 */
   spin: number;
+  /** 绕竖轴转体（弧度）：真正的三维转身 */
+  yaw: number;
+  /** 手臂深度外展（正=靠近镜头，负=远离镜头/身体外侧） */
+  armUBD: number;
+  armUFD: number;
+  armLBD: number;
+  armLFD: number;
 }
 
 const P = (p: Partial<Pose>): Pose => ({
@@ -58,12 +65,19 @@ const P = (p: Partial<Pose>): Pose => ({
   legLF: 0,
   lift: 0,
   spin: 0,
+  yaw: 0,
+  armUBD: 0,
+  armUFD: 0,
+  armLBD: 0,
+  armLFD: 0,
   ...p,
 });
 
 interface Pt {
   x: number;
   y: number;
+  /** 深度：负=远离镜头，正=靠近镜头 */
+  z: number;
 }
 
 export interface Joints {
@@ -85,44 +99,54 @@ export interface Joints {
 }
 
 /** 正向运动学：由关节角度算出各关节点坐标（骨盆在原点，y 向下为正） */
+/** 正向运动学：由关节角度（含深度外展）算出关节的三维坐标 */
 export const fk = (p: Pose): Joints => {
-  const sl = Math.sin(p.lean);
-  const cl = Math.cos(p.lean);
-  const chest: Pt = { x: sl * L.spine, y: -cl * L.spine };
+  // 方向：a = 矢状面角度（0 表示朝下），d = 深度外展角（正=靠近镜头）
+  const dir = (a: number, d: number): Pt => {
+    const cd = Math.cos(d);
+    return { x: Math.sin(a) * cd, y: Math.cos(a) * cd, z: Math.sin(d) };
+  };
+  const add = (o: Pt, d: Pt, len: number): Pt => ({
+    x: o.x + d.x * len,
+    y: o.y + d.y * len,
+    z: o.z + d.z * len,
+  });
+
+  const chest: Pt = { x: Math.sin(p.lean) * L.spine, y: -Math.cos(p.lean) * L.spine, z: 0 };
   const headAng = p.lean + p.head;
   const head: Pt = {
     x: chest.x + Math.sin(headAng) * (L.neck + L.headR),
     y: chest.y - Math.cos(headAng) * (L.neck + L.headR),
+    z: 0,
   };
-  // 肩膀垂直于脊柱方向偏移一点，形成前后层次
-  const px = cl * 2.6;
-  const py = sl * 2.6;
-  const shoulderF: Pt = { x: chest.x + px, y: chest.y + py };
-  const shoulderB: Pt = { x: chest.x - px, y: chest.y - py };
-  const hipF: Pt = { x: cl * 3, y: sl * 3 };
-  const hipB: Pt = { x: -cl * 3, y: -sl * 3 };
+  // 肩/髋向两侧错开深度，形成「近侧 / 远侧」层次
+  const sx = Math.cos(p.lean) * 2.6;
+  const sy = Math.sin(p.lean) * 2.6;
+  const shoulderF: Pt = { x: chest.x + sx, y: chest.y + sy, z: 2.8 };
+  const shoulderB: Pt = { x: chest.x - sx, y: chest.y - sy, z: -2.8 };
+  const hipF: Pt = { x: Math.cos(p.lean) * 3, y: Math.sin(p.lean) * 3, z: 3 };
+  const hipB: Pt = { x: -Math.cos(p.lean) * 3, y: -Math.sin(p.lean) * 3, z: -3 };
 
-  const arm = (s: Pt, u: number, f: number) => {
+  const arm = (s: Pt, u: number, f: number, ud: number, fd: number) => {
     const a1 = p.lean * 0.3 + u;
-    const elbow: Pt = { x: s.x + Math.sin(a1) * L.upperArm, y: s.y + Math.cos(a1) * L.upperArm };
+    const elbow = add(s, dir(a1, ud), L.upperArm);
     const a2 = a1 + f;
-    const hand: Pt = { x: elbow.x + Math.sin(a2) * L.foreArm, y: elbow.y + Math.cos(a2) * L.foreArm };
+    const hand = add(elbow, dir(a2, ud + fd), L.foreArm);
     return { elbow, hand };
   };
   const leg = (hip: Pt, u: number, f: number) => {
-    const knee: Pt = { x: hip.x + Math.sin(u) * L.thigh, y: hip.y + Math.cos(u) * L.thigh };
-    const a2 = u + f;
-    const foot: Pt = { x: knee.x + Math.sin(a2) * L.shin, y: knee.y + Math.cos(a2) * L.shin };
+    const knee = add(hip, dir(u, 0), L.thigh);
+    const foot = add(knee, dir(u + f, 0), L.shin);
     return { knee, foot };
   };
 
-  const b = arm(shoulderB, p.armUB, p.armLB);
-  const f2 = arm(shoulderF, p.armUF, p.armLF);
+  const b = arm(shoulderB, p.armUB, p.armLB, p.armUBD, p.armLBD);
+  const f2 = arm(shoulderF, p.armUF, p.armLF, p.armUFD, p.armLFD);
   const lb = leg(hipB, p.legUB, p.legLB);
   const lf = leg(hipF, p.legUF, p.legLF);
 
   return {
-    pelvis: { x: 0, y: 0 },
+    pelvis: { x: 0, y: 0, z: 0 },
     chest,
     head,
     shoulderB,
@@ -158,20 +182,20 @@ const BLOCK = P({ lean: -0.05, head: 0.12, armUB: 1.35, armLB: 2.3, armUF: 1.4, 
 const JAB_WIND = P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2.0, armUF: 0.72, armLF: 2.15, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.1 });
 const JAB_HIT = P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, armLF: 0.0, legUB: -0.42, legLB: 0.26, legUF: 0.5, legLF: 0.04 });
 
-const CROSS_WIND = P({ lean: -0.04, head: -0.07, armUB: 0.55, armLB: 2.3, armUF: 1.05, armLF: 1.9, legUB: -0.22, legLB: 0.16, legUF: 0.28, legLF: 0.12 });
-const CROSS_HIT = P({ lean: 0.42, head: 0.05, armUB: 1.62, armLB: 0.02, armUF: 0.52, armLF: 1.95, legUB: -0.5, legLB: 0.3, legUF: 0.56, legLF: 0.02 });
+const CROSS_WIND = P({ lean: -0.06, head: -0.09, armUB: -0.5, armLB: 2.0, armUBD: -0.55, armUF: 1.0, armLF: 1.85, armUFD: 0.3, legUB: -0.22, legLB: 0.16, legUF: 0.28, legLF: 0.12, yaw: -0.22 });
+const CROSS_HIT = P({ lean: 0.42, head: 0.06, armUB: 1.58, armLB: 0.03, armUBD: -0.2, armUF: 0.5, armLF: 1.95, armUFD: 0.35, legUB: -0.5, legLB: 0.3, legUF: 0.56, legLF: 0.02, yaw: 0.16 });
 
 /** 摆拳（横拳）：手臂保持弯曲，末端走弧线 */
-const HOOK_WIND = P({ lean: -0.08, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: 0.42, armLF: 2.3, legUB: -0.24, legLB: 0.18, legUF: 0.3, legLF: 0.12 });
-const HOOK_HIT = P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.5, armLF: 1.15, legUB: -0.46, legLB: 0.3, legUF: 0.5, legLF: 0.04 });
+const HOOK_WIND = P({ lean: -0.1, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: -0.35, armLF: 1.1, armUFD: -1.0, legUB: -0.24, legLB: 0.18, legUF: 0.3, legLF: 0.12, yaw: -0.2 });
+const HOOK_HIT = P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.45, armLF: 1.2, armUFD: 0.45, armLFD: 0.2, legUB: -0.46, legLB: 0.3, legUF: 0.5, legLF: 0.04, yaw: 0.26 });
 
 /** 上勾拳（冲天拳）：先蹲，再蹬腿上冲 */
-const UPPER_WIND = P({ lean: 0.32, head: 0.08, armUB: 0.3, armLB: 2.45, armUF: 0.85, armLF: 1.9, legUB: 0.4, legLB: -0.95, legUF: 0.45, legLF: -1.0 });
-const UPPER_HIT = P({ lean: 0.06, head: 0.14, armUB: 2.15, armLB: 0.25, armUF: 0.75, armLF: 1.85, legUB: -0.1, legLB: 0.06, legUF: 0.16, legLF: 0.04 });
+const UPPER_WIND = P({ lean: 0.34, head: 0.08, armUB: 0.1, armLB: 2.35, armUBD: -0.75, armUF: 0.85, armLF: 1.9, legUB: 0.4, legLB: -0.95, legUF: 0.45, legLF: -1.0, yaw: -0.15 });
+const UPPER_HIT = P({ lean: 0.02, head: 0.16, armUB: 1.95, armLB: 0.22, armUBD: -0.3, armUF: 0.75, armLF: 1.85, legUB: -0.1, legLB: 0.06, legUF: 0.16, legLF: 0.04, yaw: 0.06 });
 
 /** 肘击：前臂折死，用肘尖打 */
-const ELBOW_WIND = P({ lean: 0.12, head: -0.04, armUB: 1.0, armLB: 2.1, armUF: 0.6, armLF: 2.4, legUB: -0.26, legLB: 0.2, legUF: 0.32, legLF: 0.1 });
-const ELBOW_HIT = P({ lean: 0.44, head: 0.06, armUB: 0.95, armLB: 2.05, armUF: 1.35, armLF: 2.55, legUB: -0.5, legLB: 0.3, legUF: 0.5, legLF: 0.04 });
+const ELBOW_WIND = P({ lean: 0.14, head: -0.04, armUB: 1.0, armLB: 2.1, armUF: 0.55, armLF: 2.4, armUFD: -0.6, legUB: -0.26, legLB: 0.2, legUF: 0.32, legLF: 0.1, yaw: -0.14 });
+const ELBOW_HIT = P({ lean: 0.46, head: 0.08, armUB: 0.95, armLB: 2.05, armUF: 1.5, armLF: 2.42, armUFD: -0.12, legUB: -0.5, legLB: 0.3, legUF: 0.5, legLF: 0.04, yaw: 0.12 });
 
 /* ---------------- 腿法 ---------------- */
 
@@ -196,10 +220,10 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_WIND = P({ lean: 0.18, head: -0.02, armUB: 0.9, armLB: 1.9, armUF: 1.0, armLF: 1.7, legUB: 0.5, legLB: -0.8, legUF: 0.35, legLF: -0.7, spin: 0 });
-const SPIN_TURN = P({ lean: 0.1, head: 0.05, armUB: 0.6, armLB: 1.5, armUF: 1.2, armLF: 1.2, legUB: 0.9, legLB: -1.1, legUF: 0.1, legLF: -0.2, spin: 1.9 });
-const SPIN_HIT = P({ lean: 0.22, head: 0.1, armUB: -0.4, armLB: 0.9, armUF: 0.4, armLF: 1.1, legUB: 1.52, legLB: 0.04, legUF: -0.18, legLF: 0.1, spin: 3.6 });
-const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.12, spin: 6.2832 });
+const SPIN_WIND = P({ lean: 0.2, head: -0.02, armUB: 0.9, armLB: 1.9, armUF: 1.0, armLF: 1.7, legUB: 0.5, legLB: -0.8, legUF: 0.35, legLF: -0.7, yaw: 0 });
+const SPIN_TURN = P({ lean: 0.12, head: 0.05, armUB: 0.5, armLB: 1.4, armUF: 1.2, armLF: 1.2, legUB: 0.75, legLB: -0.9, legUF: -0.15, legLF: 0.05, yaw: 1.95 });
+const SPIN_HIT = P({ lean: 0.16, head: 0.1, armUB: -0.55, armLB: 0.8, armUF: 0.45, armLF: 1.0, legUB: -1.45, legLB: 0.05, legUF: -0.12, legLF: 0.08, yaw: 3.25 });
+const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
 const FLY_CROUCH = P({ lean: 0.34, head: -0.1, armUB: -0.6, armLB: 0.8, armUF: -0.7, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
@@ -267,7 +291,6 @@ interface AtkHit {
   at: number;
   dmg: [number, number];
   reach: number;
-  knock: number;
   /** 不写就用招式的默认部位 */
   part?: StrikePart;
 }
@@ -291,7 +314,7 @@ const ATTACKS: Record<string, Atk> = {
   cross: { part: 'handB', hits: [{ at: 0.54, dmg: [12, 19], reach: 1.05, knock: 230 }], hitstop: 0.06, react: 'heavy' },
   hook: { part: 'handF', hits: [{ at: 0.54, dmg: [13, 20], reach: 1.02, knock: 210 }], hitstop: 0.06, react: 'light' },
   uppercut: { part: 'handB', hits: [{ at: 0.56, dmg: [16, 25], reach: 1.0, knock: 180 }], hitstop: 0.075, react: 'up', close: true, forward: 55 },
-  elbow: { part: 'elbowF', hits: [{ at: 0.5, dmg: [14, 22], reach: 1.05, knock: 170 }], hitstop: 0.07, react: 'heavy', close: true, forward: 40 },
+  elbow: { part: 'elbowF', hits: [{ at: 0.5, dmg: [14, 22], reach: 1.05, knock: 170 }], hitstop: 0.07, react: 'heavy', close: true, forward: 85 },
 
   snapKick: { part: 'footF', hits: [{ at: 0.5, dmg: [11, 18], reach: 1.2, knock: 260 }], hitstop: 0.055, react: 'light' },
   pushKick: { part: 'footF', hits: [{ at: 0.52, dmg: [14, 21], reach: 1.3, knock: 340 }], hitstop: 0.065, react: 'heavy' },
@@ -330,6 +353,11 @@ const lerpPose = (a: Pose, b: Pose, k: number): Pose => ({
   legLF: lerp(a.legLF, b.legLF, k),
   lift: lerp(a.lift, b.lift, k),
   spin: lerp(a.spin, b.spin, k),
+  yaw: lerp(a.yaw, b.yaw, k),
+  armUBD: lerp(a.armUBD, b.armUBD, k),
+  armUFD: lerp(a.armUFD, b.armUFD, k),
+  armLBD: lerp(a.armLBD, b.armLBD, k),
+  armLFD: lerp(a.armLFD, b.armLFD, k),
 });
 
 /** 出拳/出腿的「命中帧」用 easeOutBack，让动作更脆 */
@@ -501,6 +529,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     lastDecision: number;
     emote: string | null;
     kb: number;
+    /** 无敌帧剩余时间（闪避用） */
+    invuln: number;
     minX: number;
     maxX: number;
   }
@@ -558,6 +588,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     lastDecision: 0,
     emote: null,
     kb: 0,
+    invuln: 0,
     minX: 20,
     maxX: 9999,
   });
@@ -625,13 +656,29 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /* ---------- 姿态与坐标 ---------- */
 
+  // 透视焦距：越大越接近正交投影，越小透视越强
+  const FOCAL = 320;
+
   const place = (f: Fighter) => {
     const j = fk(f.pose);
     const lowFeet = Math.max(j.footB.y, j.footF.y);
     const dy = groundY() - lowFeet - f.pose.lift - (1 - f.scale) * 20;
+    const yaw = f.pose.yaw || 0;
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
     const out = {} as Record<keyof Joints, Pt>;
     for (const k of Object.keys(j) as (keyof Joints)[]) {
-      out[k] = { x: f.x + f.facing * j[k].x * f.scale, y: dy + j[k].y * f.scale };
+      const q = j[k];
+      // 绕竖轴转体（真三维转身，不是翻面）
+      const x1 = q.x * cy + q.z * sy;
+      const z1 = -q.x * sy + q.z * cy;
+      // 透视：离镜头越远越小
+      const persp = FOCAL / (FOCAL + z1);
+      out[k] = {
+        x: f.x + f.facing * x1 * f.scale * persp,
+        y: dy + q.y * f.scale * persp,
+        z: z1,
+      };
     }
     return { world: out, dy };
   };
@@ -660,6 +707,8 @@ export function initFightBand(opts: FightOptions = {}): void {
   /* ---------- 状态切换 ---------- */
 
   const setState = (f: Fighter, s: State, dur?: number) => {
+    // 起跳同时进入闪避无敌帧
+    if (s === 'jump') f.invuln = 0.34;
     f.state = s;
     f.clipT = 0;
     f.clipDur = dur ?? CLIPS[s]?.dur ?? 0.3;
@@ -972,6 +1021,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       f.bob += dt;
 
       f.flash = Math.max(0, f.flash - dt * 4.5);
+      if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
 
       if (f.kb !== 0) {
 
@@ -1053,6 +1103,11 @@ export function initFightBand(opts: FightOptions = {}): void {
           if (f.hitDone[hi] || prog < h.at) continue;
           f.hitDone[hi] = true;
           if (!opp || opp.state === 'down') continue;
+          // 对方在闪避无敌帧内 -> 打空
+          if (opp.invuln > 0) {
+            spawn(opp.x - f.facing * 8, groundY() - 36, 'rgba(120,200,255,0.75)', 'dust', 5, 0.55);
+            continue;
+          }
 
           const { hit, at } = contactCheck(f, opp, h.reach, h.part ?? atk.part);
           if (!hit) {
@@ -1276,7 +1331,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.fill();
   };
 
-  /** 整具身体：按深度顺序分层绘制（远肢 → 躯干 → 头 → 近肢） */
+  /** 整具身体：按深度顺序分层绘制（含远近明暗） */
   const drawFigure = (
     get: (k: string) => Pt,
     k: number,
@@ -1292,21 +1347,46 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 远侧（暗色，形成前后层次）
-    ctx.save();
-    ctx.globalAlpha *= 0.78;
-    limb(get('hipB'), get('kneeB'), 5.2 * k, 4.2 * k, dark);
-    jointCap(get('kneeB'), 4.2 * k, dark);
-    limb(get('kneeB'), get('footB'), 4.0 * k, 3.2 * k, dark);
-    shoe(get('footB'), get('kneeB'), k, dark);
-    limb(get('shoulderB'), get('elbowB'), 4.3 * k, 3.5 * k, dark);
-    jointCap(get('elbowB'), 3.5 * k, dark);
-    limb(get('elbowB'), get('handB'), 3.4 * k, 3.0 * k, dark);
-    fist(get('handB'), k, dark);
-    ctx.restore();
+    // 深度明暗：越远越暗，越近越亮（制造前后层次）
+    const depthAlpha = (z: number) => Math.max(0.66, Math.min(1.06, 0.72 + (z + 14) * 0.016));
 
-    // 躯干 + 腰带
+    const zB = (get('elbowB').z || 0) + (get('handB').z || 0);
+    const zF = (get('elbowF').z || 0) + (get('handF').z || 0);
+    const backArmIsFarther = zB <= zF;
+
+    const drawArm = (which: 'B' | 'F', base: string) => {
+      const s = get(which === 'B' ? 'shoulderB' : 'shoulderF');
+      const e = get(which === 'B' ? 'elbowB' : 'elbowF');
+      const h = get(which === 'B' ? 'handB' : 'handF');
+      ctx.save();
+      ctx.globalAlpha *= depthAlpha(((e.z || 0) + (h.z || 0)) / 2);
+      limb(s, e, 4.5 * k, 3.7 * k, base);
+      jointCap(e, 3.7 * k, base);
+      limb(e, h, 3.6 * k, 3.1 * k, base);
+      fist(h, k, base);
+      ctx.restore();
+    };
+
+    const drawLeg = (which: 'B' | 'F', base: string) => {
+      const hip = get(which === 'B' ? 'hipB' : 'hipF');
+      const knee = get(which === 'B' ? 'kneeB' : 'kneeF');
+      const foot = get(which === 'B' ? 'footB' : 'footF');
+      ctx.save();
+      ctx.globalAlpha *= depthAlpha(((knee.z || 0) + (foot.z || 0)) / 2);
+      limb(hip, knee, (which === 'B' ? 5.0 : 5.6) * k, (which === 'B' ? 4.0 : 4.5) * k, base);
+      jointCap(knee, (which === 'B' ? 4.0 : 4.5) * k, base);
+      limb(knee, foot, (which === 'B' ? 3.8 : 4.2) * k, 3.3 * k, base);
+      shoe(foot, knee, k, base);
+      ctx.restore();
+    };
+
+    // 远侧手臂 → 远侧腿 → 躯干 → 头 → 近侧腿 → 近侧手臂
+    drawArm(backArmIsFarther ? 'B' : 'F', dark);
+    drawLeg('B', dark);
+
     torsoShape(pelvis, chest, k, body);
+
+    // 腰带
     const dx = chest.x - pelvis.x;
     const dy = chest.y - pelvis.y;
     const dl = Math.hypot(dx, dy) || 1;
@@ -1315,26 +1395,17 @@ export function initFightBand(opts: FightOptions = {}): void {
     const bw = 6.4 * k;
     const bcx = pelvis.x + dx * 0.26;
     const bcy = pelvis.y + dy * 0.26;
-    capsule({ x: bcx + nx * bw, y: bcy + ny * bw }, { x: bcx - nx * bw, y: bcy - ny * bw }, 2.0 * k, 2.0 * k, trim);
+    capsule({ x: bcx + nx * bw, y: bcy + ny * bw, z: 0 }, { x: bcx - nx * bw, y: bcy - ny * bw, z: 0 }, 2.0 * k, 2.0 * k, trim);
 
     // 脖子
-    const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.14, y: chest.y + (chest.y - pelvis.y) * 0.14 };
-    limb(neckA, { x: head.x, y: head.y + L.headR * k * 0.65 }, 3.4 * k, 3.2 * k, dark);
+    const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.14, y: chest.y + (chest.y - pelvis.y) * 0.14, z: 0 };
+    limb(neckA, { x: head.x, y: head.y + L.headR * k * 0.65, z: 0 }, 3.4 * k, 3.2 * k, dark);
 
     // 头
     headShape(head, k, body, trim, expr);
 
-    // 近侧腿
-    limb(get('hipF'), get('kneeF'), 5.8 * k, 4.6 * k, body);
-    jointCap(get('kneeF'), 4.6 * k, body);
-    limb(get('kneeF'), get('footF'), 4.4 * k, 3.4 * k, body);
-    shoe(get('footF'), get('kneeF'), k, body);
-
-    // 近侧手臂 + 拳头
-    limb(get('shoulderF'), get('elbowF'), 4.8 * k, 3.9 * k, body);
-    jointCap(get('elbowF'), 3.9 * k, body);
-    limb(get('elbowF'), get('handF'), 3.8 * k, 3.2 * k, body);
-    fist(get('handF'), k, body);
+    drawLeg('F', body);
+    drawArm(backArmIsFarther ? 'F' : 'B', body);
   };
 
   const drawFighter = (f: Fighter) => {
