@@ -1,51 +1,48 @@
 /**
- * 首页「小人打架」—— 骨骼动画版
+ * 首页「小人打架」—— 骨骼动画 + 空间命中 + 自主战斗
  *
- * 做法参考开源项目的通用思路（Cani2D / Axis 火柴人关键帧 / HumanSkeletonJS 层级骨架）：
- *   1. 骨架是一棵层级树：骨盆 → 胸腔 → 头；胸腔 → 上臂 → 前臂 → 手；骨盆 → 大腿 → 小腿 → 脚
- *   2. 每一帧的动作 = 一组「关节角度」(Pose)
- *   3. 一套动作 = 若干关键帧 Pose，按时间在关键帧之间插值 → 正向运动学(FK)算出各关节坐标
- *   4. 倒地不再手写旋转，而是把当前所有关节点转成 Verlet 粒子 + 骨骼距离约束，
- *      丢给简易物理模拟 —— 这样人是「瘫倒」而不是「整体转一下」
+ * 设计要点（对应上一版的问题）：
+ *   1. 造型：不再是细线火柴人，改用锥形胶囊四肢 + 描边 + 头发/拳头/脚掌细节
+ *   2. 命中：不是"隔空扣血"。出拳时用 FK 算出拳头真实世界坐标，
+ *      只有在拳头真正碰到对手躯干时才判定命中；够不着就是挥空（whiff）
+ *   3. 交互：被打的一方有 block 格挡 / hurtLight 轻击后仰 / hurtHeavy 重击弯腰 /
+ *      knockdown 倒地 / getup 起身 一整套反应，且被打会真的被击退
+ *   4. 自主：每个小人由 BehaviourController 做决策（进退/进攻/格挡/闪避），
+ *      不再是固定轮流出手
+ *   5. 接口：window.takinolFight.setController(fn) 可把决策交给外部（将来接 AI API）。
+ *      默认用本地启发式 AI；只有页面真的被人看到时才跑（IntersectionObserver + 标签页可见性）
  */
 
+/* ============================================================
+ * 1. 骨架定义
+ * ============================================================ */
+
+const L = {
+  spine: 17,
+  neck: 2,
+  headR: 7.5,
+  upperArm: 10.5,
+  foreArm: 10.5,
+  thigh: 14,
+  shin: 14,
+};
+
+const TAU = Math.PI * 2;
+
 export interface Pose {
-  lean: number; // 躯干前倾（+ 为朝面向方向）
-  head: number; // 头相对躯干
-  armUB: number; // 后手上臂
-  armLB: number; // 后手前臂（相对上臂）
-  armUF: number; // 前手上臂
-  armLF: number; // 前手前臂
+  lean: number;
+  head: number;
+  armUB: number;
+  armLB: number;
+  armUF: number;
+  armLF: number;
   legUB: number;
   legLB: number;
   legUF: number;
   legLF: number;
-  lift: number; // 整体离地高度（+ 为腾空）
+  lift: number;
 }
 
-interface Key {
-  t: number; // 0~1
-  pose: Pose;
-}
-
-interface Clip {
-  dur: number;
-  loop: boolean;
-  keys: Key[];
-}
-
-/** 骨骼长度（像素），整体身高约 56 */
-const L = {
-  spine: 15,
-  neck: 3,
-  headR: 6.5,
-  upperArm: 9,
-  foreArm: 9,
-  thigh: 12,
-  shin: 12,
-};
-
-const TAU = Math.PI * 2;
 const P = (p: Partial<Pose>): Pose => ({
   lean: 0,
   head: 0,
@@ -61,145 +58,147 @@ const P = (p: Partial<Pose>): Pose => ({
   ...p,
 });
 
-/* ---------------- 姿势库 ---------------- */
-
-// 站立待机
-const IDLE = P({ lean: 0.04, armUB: 0.16, armLB: 0.2, armUF: -0.12, armLF: 0.24, legUB: -0.1, legLB: 0.06, legUF: 0.1, legLF: 0.03 });
-// 待机呼吸（另一帧）
-const IDLE2 = P({ lean: 0.07, head: -0.04, armUB: 0.21, armLB: 0.24, armUF: -0.07, armLF: 0.28, legUB: -0.08, legLB: 0.05, legUF: 0.08, legLF: 0.04 });
-
-// 格斗架势
-const GUARD = P({ lean: 0.14, head: -0.05, armUB: 1.0, armLB: 1.75, armUF: 1.05, armLF: 1.7, legUB: -0.26, legLB: 0.16, legUF: 0.3, legLF: 0.1 });
-
-// 直拳（前手）：蓄力 → 出拳 → 收拳
-const JAB_WIND = P({ lean: 0.1, head: -0.05, armUB: 1.05, armLB: 1.85, armUF: 0.75, armLF: 2.0, legUB: -0.24, legLB: 0.16, legUF: 0.3, legLF: 0.08 });
-const JAB_HIT = P({ lean: 0.24, head: -0.02, armUB: 0.85, armLB: 2.0, armUF: 1.55, armLF: 0.04, legUB: -0.34, legLB: 0.2, legUF: 0.42, legLF: 0.06 });
-
-// 后手重拳（配合身体转动）
-const CROSS_WIND = P({ lean: -0.02, head: -0.06, armUB: 0.6, armLB: 2.15, armUF: 1.0, armLF: 1.75, legUB: -0.2, legLB: 0.14, legUF: 0.26, legLF: 0.1 });
-const CROSS_HIT = P({ lean: 0.34, head: 0.04, armUB: 1.5, armLB: 0.06, armUF: 0.55, armLF: 1.95, legUB: -0.4, legLB: 0.24, legUF: 0.46, legLF: 0.05 });
-
-// 前踢：抬腿 → 踢出
-const KICK_UP = P({ lean: -0.16, head: -0.04, armUB: 0.7, armLB: 1.6, armUF: 0.9, armLF: 1.4, legUB: 0.12, legLB: 0.02, legUF: 1.0, legLF: -1.5 });
-const KICK_HIT = P({ lean: -0.34, head: -0.06, armUB: 0.2, armLB: 1.2, armUF: 0.4, armLF: 1.1, legUB: 0.16, legLB: 0.04, legUF: 1.5, legLF: 0.02 });
-
-// 受击
-const HURT = P({ lean: -0.3, head: -0.55, armUB: -0.5, armLB: 0.7, armUF: -0.75, armLF: 0.9, legUB: -0.3, legLB: 0.24, legUF: 0.26, legLF: 0.12 });
-
-// 起跳：下蹲 → 蹬地 → 空中收腿 → 落地
-const JUMP_CROUCH = P({ lean: 0.3, head: -0.1, armUB: -0.6, armLB: 0.7, armUF: -0.7, armLF: 0.8, legUB: 0.58, legLB: -1.25, legUF: 0.54, legLF: -1.5 });
-const JUMP_UP = P({ lean: 0.06, head: 0.06, armUB: 1.7, armLB: 0.15, armUF: 1.85, armLF: 0.1, legUB: -0.06, legLB: 0.02, legUF: 0.08, legLF: 0.02, lift: 30 });
-const JUMP_TUCK = P({ lean: 0.12, head: 0.04, armUB: 1.35, armLB: 0.5, armUF: 1.5, armLF: 0.45, legUB: 0.85, legLB: -1.3, legUF: 1.0, legLF: -1.45, lift: 34 });
-const JUMP_LAND = P({ lean: 0.36, head: -0.12, armUB: -0.5, armLB: 0.9, armUF: -0.6, armLF: 1.0, legUB: 0.66, legLB: -1.35, legUF: 0.6, legLF: -1.5 });
-
-const CLIPS: Record<string, Clip> = {
-  idle: { dur: 2.6, loop: true, keys: [{ t: 0, pose: IDLE }, { t: 0.5, pose: IDLE2 }, { t: 1, pose: IDLE }] },
-  guard: { dur: 0.18, loop: false, keys: [{ t: 0, pose: IDLE }, { t: 1, pose: GUARD }] },
-  jab: {
-    dur: 0.46,
-    loop: false,
-    keys: [
-      { t: 0, pose: GUARD },
-      { t: 0.3, pose: JAB_WIND },
-      { t: 0.52, pose: JAB_HIT },
-      { t: 0.68, pose: JAB_HIT },
-      { t: 1, pose: GUARD },
-    ],
-  },
-  cross: {
-    dur: 0.56,
-    loop: false,
-    keys: [
-      { t: 0, pose: GUARD },
-      { t: 0.32, pose: CROSS_WIND },
-      { t: 0.56, pose: CROSS_HIT },
-      { t: 0.72, pose: CROSS_HIT },
-      { t: 1, pose: GUARD },
-    ],
-  },
-  kick: {
-    dur: 0.62,
-    loop: false,
-    keys: [
-      { t: 0, pose: GUARD },
-      { t: 0.34, pose: KICK_UP },
-      { t: 0.52, pose: KICK_HIT },
-      { t: 0.66, pose: KICK_HIT },
-      { t: 1, pose: GUARD },
-    ],
-  },
-  hurt: { dur: 0.34, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.25, pose: HURT }, { t: 1, pose: GUARD }] },
-  jump: {
-    dur: 0.86,
-    loop: false,
-    keys: [
-      { t: 0, pose: GUARD },
-      { t: 0.18, pose: JUMP_CROUCH },
-      { t: 0.42, pose: JUMP_UP },
-      { t: 0.66, pose: JUMP_TUCK },
-      { t: 0.84, pose: JUMP_LAND },
-      { t: 1, pose: GUARD },
-    ],
-  },
-};
-
-// 攻击动作在「命中时刻」的进度（用于结算伤害）
-const HIT_AT: Record<string, number> = { jab: 0.52, cross: 0.56, kick: 0.52 };
-
-/* ---------------- 正向运动学 ---------------- */
-
-interface Pts {
-  pelvis: { x: number; y: number };
-  chest: { x: number; y: number };
-  head: { x: number; y: number };
-  elbowB: { x: number; y: number };
-  handB: { x: number; y: number };
-  elbowF: { x: number; y: number };
-  handF: { x: number; y: number };
-  kneeB: { x: number; y: number };
-  footB: { x: number; y: number };
-  kneeF: { x: number; y: number };
-  footF: { x: number; y: number };
+interface Pt {
+  x: number;
+  y: number;
 }
 
-const fk = (p: Pose): Pts => {
-  const chest = { x: Math.sin(p.lean) * L.spine, y: -Math.cos(p.lean) * L.spine };
+export interface Joints {
+  pelvis: Pt;
+  chest: Pt;
+  head: Pt;
+  shoulderB: Pt;
+  elbowB: Pt;
+  handB: Pt;
+  shoulderF: Pt;
+  elbowF: Pt;
+  handF: Pt;
+  hipB: Pt;
+  kneeB: Pt;
+  footB: Pt;
+  hipF: Pt;
+  kneeF: Pt;
+  footF: Pt;
+}
+
+/** 正向运动学：由关节角度算出各关节点坐标（骨盆在原点，y 向下为正） */
+export const fk = (p: Pose): Joints => {
+  const sl = Math.sin(p.lean);
+  const cl = Math.cos(p.lean);
+  const chest: Pt = { x: sl * L.spine, y: -cl * L.spine };
   const headAng = p.lean + p.head;
-  const head = {
+  const head: Pt = {
     x: chest.x + Math.sin(headAng) * (L.neck + L.headR),
     y: chest.y - Math.cos(headAng) * (L.neck + L.headR),
   };
-  const arm = (u: number, f: number) => {
-    const a1 = p.lean * 0.35 + u;
-    const elbow = { x: chest.x + Math.sin(a1) * L.upperArm, y: chest.y + Math.cos(a1) * L.upperArm };
+  // 肩膀垂直于脊柱方向偏移一点，形成前后层次
+  const px = cl * 2.6;
+  const py = sl * 2.6;
+  const shoulderF: Pt = { x: chest.x + px, y: chest.y + py };
+  const shoulderB: Pt = { x: chest.x - px, y: chest.y - py };
+  const hipF: Pt = { x: cl * 3, y: sl * 3 };
+  const hipB: Pt = { x: -cl * 3, y: -sl * 3 };
+
+  const arm = (s: Pt, u: number, f: number) => {
+    const a1 = p.lean * 0.3 + u;
+    const elbow: Pt = { x: s.x + Math.sin(a1) * L.upperArm, y: s.y + Math.cos(a1) * L.upperArm };
     const a2 = a1 + f;
-    const hand = { x: elbow.x + Math.sin(a2) * L.foreArm, y: elbow.y + Math.cos(a2) * L.foreArm };
+    const hand: Pt = { x: elbow.x + Math.sin(a2) * L.foreArm, y: elbow.y + Math.cos(a2) * L.foreArm };
     return { elbow, hand };
   };
-  const leg = (u: number, f: number) => {
-    const knee = { x: Math.sin(u) * L.thigh, y: Math.cos(u) * L.thigh };
+  const leg = (hip: Pt, u: number, f: number) => {
+    const knee: Pt = { x: hip.x + Math.sin(u) * L.thigh, y: hip.y + Math.cos(u) * L.thigh };
     const a2 = u + f;
-    const foot = { x: knee.x + Math.sin(a2) * L.shin, y: knee.y + Math.cos(a2) * L.shin };
+    const foot: Pt = { x: knee.x + Math.sin(a2) * L.shin, y: knee.y + Math.cos(a2) * L.shin };
     return { knee, foot };
   };
-  const b = arm(p.armUB, p.armLB);
-  const f2 = arm(p.armUF, p.armLF);
-  const lb = leg(p.legUB, p.legLB);
-  const lf = leg(p.legUF, p.legLF);
+
+  const b = arm(shoulderB, p.armUB, p.armLB);
+  const f2 = arm(shoulderF, p.armUF, p.armLF);
+  const lb = leg(hipB, p.legUB, p.legLB);
+  const lf = leg(hipF, p.legUF, p.legLF);
+
   return {
     pelvis: { x: 0, y: 0 },
     chest,
     head,
+    shoulderB,
     elbowB: b.elbow,
     handB: b.hand,
+    shoulderF,
     elbowF: f2.elbow,
     handF: f2.hand,
+    hipB,
     kneeB: lb.knee,
     footB: lb.foot,
+    hipF,
     kneeF: lf.knee,
     footF: lf.foot,
   };
 };
+
+/* ============================================================
+ * 2. 姿势库
+ * ============================================================ */
+
+const IDLE_A = P({ lean: 0.05, armUB: 0.2, armLB: 0.35, armUF: -0.15, armLF: 0.3, legUB: -0.12, legLB: 0.1, legUF: 0.12, legLF: 0.05 });
+const IDLE_B = P({ lean: 0.09, head: -0.05, armUB: 0.26, armLB: 0.4, armUF: -0.09, armLF: 0.35, legUB: -0.09, legLB: 0.08, legUF: 0.09, legLF: 0.06 });
+
+/** 格斗架势：双手抬起护住面门 */
+const GUARD = P({ lean: 0.15, head: -0.06, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legLB: 0.2, legUF: 0.34, legLF: 0.12 });
+
+/** 格挡：双臂抬高收紧 */
+const BLOCK = P({ lean: -0.05, head: 0.12, armUB: 1.35, armLB: 2.3, armUF: 1.4, armLF: 2.35, legUB: -0.34, legLB: 0.26, legUF: 0.36, legLF: 0.14 });
+
+const JAB_WIND = P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2.0, armUF: 0.72, armLF: 2.15, legUB: -0.28, legLB: 0.2, legUF: 0.32, legLF: 0.1 });
+const JAB_HIT = P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, armLF: 0.0, legUB: -0.42, legLB: 0.26, legUF: 0.5, legLF: 0.04 });
+
+const CROSS_WIND = P({ lean: -0.04, head: -0.07, armUB: 0.55, armLB: 2.3, armUF: 1.05, armLF: 1.9, legUB: -0.22, legLB: 0.16, legUF: 0.28, legLF: 0.12 });
+const CROSS_HIT = P({ lean: 0.42, head: 0.05, armUB: 1.62, armLB: 0.02, armUF: 0.52, armLF: 1.95, legUB: -0.5, legLB: 0.3, legUF: 0.56, legLF: 0.02 });
+
+const KICK_UP = P({ lean: -0.2, head: -0.05, armUB: 0.75, armLB: 1.7, armUF: 0.95, armLF: 1.5, legUB: 0.14, legLB: 0.02, legUF: 1.05, legLF: -1.55 });
+const KICK_HIT = P({ lean: -0.4, head: -0.08, armUB: 0.2, armLB: 1.3, armUF: 0.45, armLF: 1.2, legUB: 0.18, legLB: 0.04, legUF: 1.58, legLF: 0.02 });
+
+/** 轻击后仰：头猛地一甩 */
+const HURT_LIGHT = P({ lean: -0.28, head: -0.6, armUB: -0.45, armLB: 0.9, armUF: -0.7, armLF: 1.05, legUB: -0.34, legLB: 0.28, legUF: 0.3, legLF: 0.14 });
+/** 重击：弓身缩起来 */
+const HURT_HEAVY = P({ lean: 0.45, head: 0.5, armUB: 0.35, armLB: 1.6, armUF: 0.15, armLF: 1.75, legUB: 0.3, legLB: -0.55, legUF: 0.42, legLF: -0.7 });
+
+const JUMP_CROUCH = P({ lean: 0.34, head: -0.12, armUB: -0.65, armLB: 0.8, armUF: -0.75, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
+const JUMP_AIR = P({ lean: 0.1, head: 0.08, armUB: 1.6, armLB: 0.3, armUF: 1.75, armLF: 0.25, legUB: 0.8, legLB: -1.3, legUF: 0.95, legLF: -1.45, lift: 30 });
+const JUMP_LAND = P({ lean: 0.4, head: -0.14, armUB: -0.55, armLB: 0.95, armUF: -0.65, armLF: 1.05, legUB: 0.7, legLB: -1.45, legUF: 0.64, legLF: -1.6 });
+
+/** 起身：跪姿 → 站起 */
+const GETUP_KNEEL = P({ lean: 0.55, head: 0.15, armUB: 0.7, armLB: 1.4, armUF: 0.9, armLF: 1.2, legUB: 1.5, legLB: -2.4, legUF: 0.35, legLF: -1.5 });
+
+interface Clip {
+  dur: number;
+  loop: boolean;
+  keys: { t: number; pose: Pose }[];
+}
+
+const CLIPS: Record<string, Clip> = {
+  idle: { dur: 2.4, loop: true, keys: [{ t: 0, pose: IDLE_A }, { t: 0.5, pose: IDLE_B }, { t: 1, pose: IDLE_A }] },
+  guard: { dur: 0.16, loop: false, keys: [{ t: 0, pose: IDLE_A }, { t: 1, pose: GUARD }] },
+  block: { dur: 0.16, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 1, pose: BLOCK }] },
+  jab: { dur: 0.42, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.28, pose: JAB_WIND }, { t: 0.5, pose: JAB_HIT }, { t: 0.64, pose: JAB_HIT }, { t: 1, pose: GUARD }] },
+  cross: { dur: 0.54, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: CROSS_WIND }, { t: 0.54, pose: CROSS_HIT }, { t: 0.7, pose: CROSS_HIT }, { t: 1, pose: GUARD }] },
+  kick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: KICK_UP }, { t: 0.5, pose: KICK_HIT }, { t: 0.62, pose: KICK_HIT }, { t: 1, pose: GUARD }] },
+  hurtLight: { dur: 0.32, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.22, pose: HURT_LIGHT }, { t: 1, pose: GUARD }] },
+  hurtHeavy: { dur: 0.52, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.25, pose: HURT_HEAVY }, { t: 1, pose: GUARD }] },
+  jump: { dur: 0.8, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: JUMP_CROUCH }, { t: 0.4, pose: JUMP_AIR }, { t: 0.64, pose: JUMP_AIR }, { t: 0.82, pose: JUMP_LAND }, { t: 1, pose: GUARD }] },
+  getup: { dur: 0.62, loop: false, keys: [{ t: 0, pose: GETUP_KNEEL }, { t: 1, pose: IDLE_A }] },
+};
+
+/** 招式命中判定的进度（0~1）与伤害 */
+const ATTACKS: Record<string, { hitAt: number; dmg: [number, number]; reach: number }> = {
+  jab: { hitAt: 0.5, dmg: [7, 12], reach: 1 },
+  cross: { hitAt: 0.54, dmg: [12, 19], reach: 1.05 },
+  kick: { hitAt: 0.5, dmg: [14, 22], reach: 1.25 },
+};
+
+const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+const easeOutBack = (k: number) => 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2);
 
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const lerpPose = (a: Pose, b: Pose, k: number): Pose => ({
@@ -216,14 +215,8 @@ const lerpPose = (a: Pose, b: Pose, k: number): Pose => ({
   lift: lerp(a.lift, b.lift, k),
 });
 
-const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
-const easeOutBack = (k: number) => {
-  const c = 1.70158;
-  return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2);
-};
-
 const sampleClip = (clip: Clip, t: number): Pose => {
-  const tt = clip.loop ? t % 1 : Math.min(0.9999, Math.max(0, t));
+  const tt = clip.loop ? ((t % 1) + 1) % 1 : Math.min(0.9999, Math.max(0, t));
   const keys = clip.keys;
   for (let i = 0; i < keys.length - 1; i++) {
     const a = keys[i];
@@ -231,40 +224,64 @@ const sampleClip = (clip: Clip, t: number): Pose => {
     if (tt >= a.t && tt <= b.t) {
       const span = b.t - a.t || 1;
       const k = (tt - a.t) / span;
-      // 攻击帧用 easeOutBack 让出拳更「脆」
-      const e = b.pose === JAB_HIT || b.pose === CROSS_HIT || b.pose === KICK_HIT ? easeOutBack(k) : easeInOut(k);
-      return lerpPose(a.pose, b.pose, e);
+      const punchy = b.pose === JAB_HIT || b.pose === CROSS_HIT || b.pose === KICK_HIT;
+      return lerpPose(a.pose, b.pose, punchy ? easeOutBack(k) : easeInOut(k));
     }
   }
   return keys[keys.length - 1].pose;
 };
 
-/* ---------------- 物理倒地（Verlet + 距离约束） ---------------- */
+/** 走路：用相位生成真实的迈步（前后腿反相摆动） */
+const walkPose = (phase: number, speed = 1): Pose => {
+  const s = Math.sin(phase * TAU);
+  const c = Math.cos(phase * TAU);
+  return P({
+    lean: 0.12 + Math.abs(s) * 0.04,
+    head: -0.04,
+    armUB: 0.35 - s * 0.5 * speed,
+    armLB: 0.9,
+    armUF: 0.9 + s * 0.35 * speed,
+    armLF: 1.5,
+    legUB: -s * 0.62 * speed,
+    legLB: 0.25 + Math.max(0, -c) * 0.75,
+    legUF: s * 0.62 * speed,
+    legLF: 0.25 + Math.max(0, c) * 0.75,
+  });
+};
 
-interface RP {
-  x: number;
-  y: number;
-  px: number;
-  py: number;
+/* ============================================================
+ * 3. 行为决策（自主 AI，可被外部替换）
+ * ============================================================ */
+
+export type Decision = 'approach' | 'retreat' | 'jab' | 'cross' | 'kick' | 'jump' | 'block' | 'wait';
+
+export interface FightSnapshot {
+  self: { hp: number; x: number; state: string; distance: number };
+  opponent: { hp: number; x: number; state: string; windingUp: boolean };
 }
 
-const RIG_LINKS: [string, string][] = [
-  ['pelvis', 'chest'],
-  ['chest', 'head'],
-  ['chest', 'elbowB'],
-  ['elbowB', 'handB'],
-  ['chest', 'elbowF'],
-  ['elbowF', 'handF'],
-  ['pelvis', 'kneeB'],
-  ['kneeB', 'footB'],
-  ['pelvis', 'kneeF'],
-  ['kneeF', 'footF'],
-  // 稳定用的软约束，避免整个人瘫成一团
-  ['chest', 'kneeB'],
-  ['chest', 'kneeF'],
-];
+export type FightController = (snap: FightSnapshot) => Decision | null;
 
-/* ---------------- 主体 ---------------- */
+let externalController: FightController | null = null;
+
+/** 供将来接 AI：window.takinolFight.setController(fn) */
+export function setController(fn: FightController | null): void {
+  externalController = fn;
+}
+
+/* ============================================================
+ * 4. 引擎
+ * ============================================================ */
+
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+interface Root {
+  x: number;
+  vx: number;
+  facing: number;
+  scale: number;
+  top: number; // 头顶相对骨盆的高度（造型相关）
+}
 
 export function initFightBand(): void {
   const canvas = document.getElementById('fight-canvas') as HTMLCanvasElement | null;
@@ -273,15 +290,20 @@ export function initFightBand(): void {
   if (!ctx) return;
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const COLORS = ['#DD0100', '#225095', '#FAC901', '#DE0C62', '#9ACD32', '#FB923C'];
-  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const SKINS = [
+    { body: '#DD0100', trim: '#FFF1EA', dark: '#8E0000' },
+    { body: '#225095', trim: '#E9F1FF', dark: '#12305C' },
+    { body: '#FAC901', trim: '#3A2E00', dark: '#B08D00' },
+    { body: '#DE0C62', trim: '#FFE9F2', dark: '#91063F' },
+    { body: '#7CB518', trim: '#F1FFE0', dark: '#4C720C' },
+    { body: '#FB923C', trim: '#2A1500', dark: '#B4631B' },
+  ];
 
-  type State = 'idle' | 'jab' | 'cross' | 'kick' | 'hurt' | 'jump' | 'ko';
+  type State = 'idle' | 'walk' | 'approach' | 'retreat' | 'block' | 'jab' | 'cross' | 'kick' | 'jump' | 'hurtLight' | 'hurtHeavy' | 'down' | 'getup';
 
   interface Fighter {
     x: number;
-    dir: number;
-    color: string;
+    facing: number;
     hp: number;
     maxHp: number;
     state: State;
@@ -289,14 +311,25 @@ export function initFightBand(): void {
     clipDur: number;
     pose: Pose;
     didHit: boolean;
-    knock: number;
     flash: number;
+    bob: number;
+    stun: number;
     cool: number;
-    koTime: number;
-    ragdoll: Record<string, RP> | null;
-    links: { a: string; b: string; len: number }[];
+    walkPhase: number;
     partner: number;
-    phase: number;
+    skin: (typeof SKINS)[number];
+    scale: number;
+    aggression: number;
+    guardChance: number;
+    preferDist: number;
+    downTimer: number;
+    ragdoll: Record<string, Pt & { px: number; py: number }> | null;
+    links: { a: string; b: string; len: number }[];
+    getupFade: number;
+    lastDecision: number;
+    emote: string | null;
+    minX: number;
+    maxX: number;
   }
 
   interface Spark {
@@ -307,6 +340,8 @@ export function initFightBand(): void {
     life: number;
     max: number;
     color: string;
+    size: number;
+    kind: 'hit' | 'block' | 'dust';
   }
 
   let W = 0;
@@ -316,127 +351,272 @@ export function initFightBand(): void {
   let shake = 0;
   let rafId = 0;
   let last = 0;
-  let visible = true;
+  let visible = false;
+  let tabVisible = document.visibilityState !== 'hidden';
 
-  const groundY = () => H - 16;
+  const groundY = () => H - 14;
 
-  const newFighter = (i: number): Fighter => ({
+  const mk = (i: number, skin: (typeof SKINS)[number]): Fighter => ({
     x: 0,
-    dir: 1,
-    color: COLORS[i % COLORS.length],
+    facing: 1,
     hp: 100,
     maxHp: 100,
     state: 'idle',
     clipT: 0,
     clipDur: CLIPS.idle.dur,
-    pose: { ...IDLE },
+    pose: { ...IDLE_A },
     didHit: false,
-    knock: 0,
     flash: 0,
-    cool: rand(0.6, 2.2),
-    koTime: 0,
+    bob: rand(0, 10),
+    stun: 0,
+    cool: rand(0.4, 1.6),
+    walkPhase: rand(0, 1),
+    partner: i % 2 === 0 ? i + 1 : i - 1,
+    skin,
+    scale: rand(0.94, 1.06),
+    aggression: rand(0.45, 0.95),
+    guardChance: rand(0.35, 0.75),
+    preferDist: rand(29, 34),
+    downTimer: 0,
     ragdoll: null,
     links: [],
-    partner: i % 2 === 0 ? i + 1 : i - 1,
-    phase: rand(0, 10),
+    getupFade: 0,
+    lastDecision: 0,
+    emote: null,
+    minX: 20,
+    maxX: 9999,
   });
 
   const makeFighters = (count: number) => {
     fighters = [];
-    for (let i = 0; i < count; i++) fighters.push(newFighter(i));
+    const pool = [...SKINS].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < count; i++) fighters.push(mk(i, pool[i % pool.length]));
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
   };
 
+  /** 两个一组摆在一格里，彼此站在交战距离上 */
   const layout = () => {
     const n = fighters.length;
     const pairs = Math.max(1, Math.floor(n / 2));
     const slot = W / pairs;
     for (let p = 0; p < pairs; p++) {
       const cx = slot * (p + 0.5);
-      const gap = Math.min(92, slot * 0.4);
+
+      const half = slot / 2 - 16;
       const a = fighters[p * 2];
       const b = fighters[p * 2 + 1];
       if (a) {
-        a.x = cx - gap / 2;
-        a.dir = 1;
+
+        a.x = cx - a.preferDist / 2;
+
+        a.facing = 1;
+
+        a.minX = cx - half;
+
+        a.maxX = cx + half;
+
       }
       if (b) {
-        b.x = cx + gap / 2;
-        b.dir = -1;
+
+        b.x = cx + b.preferDist / 2;
+
+        b.facing = -1;
+
+        b.minX = cx - half;
+
+        b.maxX = cx + half;
+
       }
     }
-    if (n % 2 === 1) {
-      fighters[n - 1].x = W - 40;
-      fighters[n - 1].dir = -1;
-    }
   };
 
-  const spawnSpark = (x: number, y: number, color: string, n = 7) => {
+  const spawn = (x: number, y: number, color: string, kind: Spark['kind'], n = 7, power = 1) => {
     for (let i = 0; i < n; i++) {
       const a = rand(-Math.PI, Math.PI);
-      const sp = rand(50, 170);
-      sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 50, life: 0, max: rand(0.2, 0.45), color });
+      const sp = rand(40, 150) * power;
+      sparks.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 45 * power,
+        life: 0,
+        max: kind === 'dust' ? rand(0.3, 0.55) : rand(0.16, 0.32),
+        color,
+        size: kind === 'dust' ? rand(1.6, 3) : rand(1.6, 3.4),
+        kind,
+      });
     }
   };
 
-  const playClip = (f: Fighter, name: string) => {
-    const clip = CLIPS[name];
-    if (!clip) return;
-    f.state = name as State;
+  /* ---------- 姿态与坐标 ---------- */
+
+  const place = (f: Fighter) => {
+    const j = fk(f.pose);
+    const lowFeet = Math.max(j.footB.y, j.footF.y);
+    const dy = groundY() - lowFeet - f.pose.lift - (1 - f.scale) * 20;
+    const out = {} as Record<keyof Joints, Pt>;
+    for (const k of Object.keys(j) as (keyof Joints)[]) {
+      out[k] = { x: f.x + f.facing * j[k].x * f.scale, y: dy + j[k].y * f.scale };
+    }
+    return { world: out, dy };
+  };
+
+  /** 拳头到对手躯干的距离（判定是否真的打到了） */
+  const contactCheck = (attacker: Fighter, target: Fighter, reachMul: number): { hit: boolean; at: Pt } => {
+    const aw = place(attacker).world;
+    const tw = place(target).world;
+    const fist = attacker.state === 'kick' ? aw.footF : aw.handF;
+    const fistReach = reachMul;
+    // 目标躯干当成一条线段（骨盆↔胸腔），算拳头到它的距离
+    const a = tw.pelvis;
+    const b = tw.chest;
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len2 = vx * vx + vy * vy || 1;
+    let t = ((fist.x - a.x) * vx + (fist.y - a.y) * vy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + vx * t;
+    const cy = a.y + vy * t;
+    const d = Math.hypot(fist.x - cx, fist.y - cy);
+    return { hit: d <= 9 * fistReach * target.scale, at: { x: cx, y: cy } };
+  };
+
+  /* ---------- 状态切换 ---------- */
+
+  const setState = (f: Fighter, s: State, dur?: number) => {
+    f.state = s;
     f.clipT = 0;
-    f.clipDur = clip.dur;
+    f.clipDur = dur ?? CLIPS[s]?.dur ?? 0.3;
     f.didHit = false;
   };
 
-  // 把当前姿势转成 Verlet 粒子，进入瘫倒状态
   const startRagdoll = (f: Fighter) => {
-    const pts = fk(f.pose);
-    const base = groundPose(f, pts);
-    const map: Record<string, RP> = {};
-    for (const k of Object.keys(pts) as (keyof Pts)[]) {
-      const w = base[k];
-      map[k] = { x: w.x, y: w.y, px: w.x - f.dir * 1.6, py: w.y - 1.2 };
+    const w = place(f).world;
+    const rd: Fighter['ragdoll'] = {};
+    for (const k of Object.keys(w) as (keyof Joints)[]) {
+      rd[k] = { x: w[k].x, y: w[k].y, px: w[k].x - f.facing * 2.2, py: w[k].y - 1.4 };
     }
-    const links = RIG_LINKS.map(([a, b]) => ({
-      a,
-      b,
-      len: Math.hypot(map[a].x - map[b].x, map[a].y - map[b].y),
-    }));
-    f.ragdoll = map;
+    const links = (
+      [
+        ['pelvis', 'chest'],
+        ['chest', 'head'],
+        ['shoulderB', 'chest'],
+        ['shoulderB', 'elbowB'],
+        ['elbowB', 'handB'],
+        ['shoulderF', 'chest'],
+        ['shoulderF', 'elbowF'],
+        ['elbowF', 'handF'],
+        ['hipB', 'pelvis'],
+        ['hipB', 'kneeB'],
+        ['kneeB', 'footB'],
+        ['hipF', 'pelvis'],
+        ['hipF', 'kneeF'],
+        ['kneeF', 'footF'],
+        ['chest', 'kneeB'],
+        ['chest', 'kneeF'],
+      ] as [string, string][]
+    ).map(([a, b]) => ({ a, b, len: Math.hypot(rd[a].x - rd[b].x, rd[a].y - rd[b].y) }));
+    f.ragdoll = rd;
     f.links = links;
-    f.state = 'ko';
-    f.koTime = 0;
+    f.state = 'down';
+    f.downTimer = 0;
+    f.getupFade = 0;
   };
 
-  // 计算某个姿势在世界坐标下的各关节位置
-  // 注意：lift（腾空高度）属于 Pose，不在 FK 结果里，要从 f.pose 取
-  const groundPose = (f: Fighter, pts: Pts) => {
-    const lowest = Math.max(pts.footB.y, pts.footF.y);
-    const dy = groundY() - lowest - (f.pose.lift || 0);
-    const out = {} as Record<keyof Pts, { x: number; y: number }>;
-    for (const k of Object.keys(pts) as (keyof Pts)[]) {
-      const p = pts[k];
-      out[k] = { x: f.x + f.dir * p.x + f.knock, y: dy + p.y };
+  /* ---------- 决策 ---------- */
+
+  const snapshot = (f: Fighter, opp: Fighter | undefined): FightSnapshot => ({
+    self: { hp: f.hp, x: f.x, state: f.state, distance: opp ? Math.abs(opp.x - f.x) : 999 },
+    opponent: {
+      hp: opp?.hp ?? 100,
+      x: opp?.x ?? 0,
+      state: opp?.state ?? 'idle',
+      windingUp: !!opp && (opp.state === 'jab' || opp.state === 'cross' || opp.state === 'kick') && opp.clipT < opp.clipDur * 0.35,
+    },
+  });
+
+  /** 本地启发式 AI：会走位、会格挡、残血会退、偶尔跳闪 */
+  const heuristic = (snap: FightSnapshot, f: Fighter): Decision => {
+    const d = snap.self.distance;
+    const oppWinding = snap.opponent.windingUp;
+
+    // 对手要打过来了：优先格挡
+    if (oppWinding && d < f.preferDist + 22 && Math.random() < f.guardChance) return 'block';
+    // 太远：靠近
+    if (d > f.preferDist + 9) return 'approach';
+    // 残血谨慎：偶尔退开
+    if (f.hp < 32 && Math.random() < 0.35) return 'retreat';
+    // 贴太近：拉开一点
+    if (d < f.preferDist - 8) return Math.random() < 0.5 ? 'retreat' : 'wait';
+    // 在攻击距离内：按性格出招
+    if (f.cool <= 0) {
+      const r = Math.random();
+      const agg = f.aggression;
+      if (r < 0.34 + agg * 0.2) return 'jab';
+      if (r < 0.6 + agg * 0.2) return 'cross';
+      if (r < 0.78 + agg * 0.15) return 'kick';
+      if (r < 0.9) return 'jump';
+      return 'block';
     }
-    return out;
+    return 'wait';
   };
+
+  const decide = (f: Fighter, opp: Fighter | undefined): Decision => {
+    if (!opp) return 'wait';
+    const snap = snapshot(f, opp);
+    if (externalController) {
+      try {
+        const d = externalController(snap);
+        if (d) return d;
+      } catch {
+        /* 外部控制器出错就退回本地 AI */
+      }
+    }
+    return heuristic(snap, f);
+  };
+
+  const applyDecision = (f: Fighter, opp: Fighter | undefined, d: Decision) => {
+    switch (d) {
+      case 'approach':
+        setState(f, 'approach', 0);
+        break;
+      case 'retreat':
+        setState(f, 'retreat', rand(0.28, 0.5));
+        break;
+      case 'block':
+        setState(f, 'block');
+        f.cool = Math.max(f.cool, 0.25);
+        break;
+      case 'jab':
+      case 'cross':
+      case 'kick':
+      case 'jump':
+        setState(f, d);
+        f.cool = rand(0.35, 0.9);
+        if (opp) f.facing = opp.x >= f.x ? 1 : -1;
+        break;
+      case 'wait':
+        setState(f, 'idle');
+        break;
+    }
+  };
+
+  /* ---------- 每帧更新 ---------- */
 
   const stepRagdoll = (f: Fighter, dt: number) => {
     const rd = f.ragdoll;
     if (!rd) return;
-    const g = 1500;
-    const damp = 0.992;
+    const g = 1700;
     for (const k of Object.keys(rd)) {
       const p = rd[k];
-      const vx = (p.x - p.px) * damp;
-      const vy = (p.y - p.py) * damp;
+      const vx = (p.x - p.px) * 0.99;
+      const vy = (p.y - p.py) * 0.99;
       p.px = p.x;
       p.py = p.y;
       p.x += vx;
       p.y += vy + g * dt * dt;
     }
-    // 距离约束迭代
-    for (let iter = 0; iter < 5; iter++) {
+    for (let it = 0; it < 6; it++) {
       for (const l of f.links) {
         const a = rd[l.a];
         const b = rd[l.b];
@@ -450,14 +630,12 @@ export function initFightBand(): void {
         b.x -= dx * diff;
         b.y -= dy * diff;
       }
-      // 地面碰撞
       const gy = groundY();
       for (const k of Object.keys(rd)) {
         const p = rd[k];
         if (p.y > gy) {
           p.y = gy;
-          // 摩擦
-          p.px = p.x + (p.px - p.x) * 0.55;
+          p.px = p.x + (p.px - p.x) * 0.5;
         }
       }
     }
@@ -465,78 +643,119 @@ export function initFightBand(): void {
 
   const update = (dt: number) => {
     for (const f of fighters) {
-      f.knock *= 0.85;
-      f.flash = Math.max(0, f.flash - dt * 5);
+      f.bob += dt;
+      f.flash = Math.max(0, f.flash - dt * 4.5);
 
-      if (f.state === 'ko') {
-        f.koTime += dt;
+      /* --- 倒地 --- */
+      if (f.state === 'down') {
+        f.downTimer += dt;
         stepRagdoll(f, dt);
-        if (f.koTime > 2.4) {
-          // 复活：满血站起
-          f.hp = f.maxHp;
+        if (f.downTimer > 1.3) {
+          // 起身：从倒地位置切到跪姿再站起
           f.ragdoll = null;
-          f.state = 'idle';
-          f.clipT = 0;
-          f.clipDur = CLIPS.idle.dur;
-          f.pose = { ...IDLE };
-          f.cool = rand(0.7, 1.8);
+          f.hp = f.maxHp;
+          f.getupFade = 0;
+          setState(f, 'getup');
+          f.cool = rand(0.5, 1.0);
         }
         continue;
       }
+      if (f.state === 'getup') {
+        f.getupFade = Math.min(1, f.getupFade + dt * 5);
+      }
 
+      /* --- 受击硬直 --- */
+      if (f.stun > 0) f.stun = Math.max(0, f.stun - dt);
+
+      const opp = fighters[f.partner];
+
+      /* --- 走路 / 走位 --- */
+      if (f.state === 'approach' || f.state === 'retreat') {
+        const target = opp ? opp.x : f.x;
+        const d = Math.abs(target - f.x);
+        f.facing = target >= f.x ? 1 : -1;
+        f.clipT += dt;
+
+        if (f.state === 'approach' && d > f.preferDist && f.clipT < 3.5) {
+          f.x += f.facing * 54 * dt;
+          f.walkPhase += dt * 1.9;
+          f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
+        } else if (f.state === 'retreat' && f.clipT < f.clipDur) {
+          // 后撤是短暂的规避动作，不是一直逃跑
+          f.x -= f.facing * 42 * dt;
+          f.walkPhase += dt * 1.6;
+          f.pose = lerpPose(f.pose, walkPose(f.walkPhase, -0.85), 1 - Math.exp(-dt * 22));
+        } else {
+          setState(f, 'idle');
+          f.cool = Math.max(f.cool, rand(0.12, 0.45));
+        }
+        // 限制在自己那半格场地内，不会跑出画面或穿过对手
+        f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
+        continue;
+      }
+
+      /* --- 播放动画片段 --- */
       f.clipT += dt;
       const clip = CLIPS[f.state] ?? CLIPS.idle;
       const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
-      const target = sampleClip(clip, prog);
+      const targetPose = sampleClip(clip, prog);
+      f.pose = lerpPose(f.pose, targetPose, 1 - Math.exp(-dt * 30));
 
-      // 高速率插值：既保留动作力度，又不会跳帧
-      const k = 1 - Math.exp(-dt * 32);
-      f.pose = lerpPose(f.pose, target, k);
-
-      // 命中结算
-      const hitAt = HIT_AT[f.state];
-      if (hitAt !== undefined && !f.didHit && prog >= hitAt) {
+      /* --- 攻击命中判定（真·空间碰撞） --- */
+      const atk = ATTACKS[f.state];
+      if (atk && !f.didHit && prog >= atk.hitAt) {
         f.didHit = true;
-        const tgt = fighters[f.partner];
-        if (tgt && tgt.state !== 'ko') {
-          const dmg = Math.round(rand(9, 18) * (f.state === 'cross' ? 1.3 : 1));
-          tgt.hp = Math.max(0, tgt.hp - dmg);
-          tgt.flash = 1;
-          tgt.knock = f.dir * 8;
-          shake = f.state === 'kick' ? 5 : 4;
-          const pts = fk(tgt.pose);
-          const wp = groundPose(tgt, pts);
-          const at = f.state === 'kick' ? wp.kneeF : wp.chest;
-          spawnSpark(at.x, at.y - 4, tgt.color);
-          if (tgt.hp <= 0) {
-            spawnSpark(at.x, at.y - 4, '#FAC901', 12);
-            startRagdoll(tgt);
-            continue;
+        if (opp && opp.state !== 'down') {
+          const { hit, at } = contactCheck(f, opp, atk.reach);
+          if (hit) {
+            const [lo, hi] = atk.dmg;
+            const blocking = opp.state === 'block';
+            let dmg = Math.round(rand(lo, hi) * (blocking ? 0.22 : 1));
+            opp.hp = Math.max(0, opp.hp - dmg);
+            shake = Math.max(shake, blocking ? 2 : f.state === 'kick' ? 6 : 4);
+
+            if (blocking) {
+              // 格挡：蓝白火花、小退、不掉太多血、不进硬直
+              spawn(at.x, at.y, '#9AD9FF', 'block', 6, 0.8);
+              opp.x += f.facing * 4;
+              f.x -= f.facing * 2;
+            } else {
+              opp.flash = 1;
+              // 真的被击退：位置移动 + 后仰
+              opp.x += f.facing * (f.state === 'kick' ? 11 : f.state === 'cross' ? 8 : 5);
+              opp.x = Math.max(24, Math.min(W - 24, opp.x));
+              spawn(at.x, at.y, opp.skin.trim, 'hit', f.state === 'kick' ? 10 : 7, f.state === 'kick' ? 1.3 : 1);
+              if (opp.hp <= 0) {
+                spawn(at.x, at.y, '#FAC901', 'hit', 14, 1.6);
+                startRagdoll(opp);
+                continue;
+              }
+              // 重量级招式 / 残血 → 重击弯腰；否则轻击后仰
+              const heavy = dmg >= 15 || opp.hp < 30;
+              setState(opp, heavy ? 'hurtHeavy' : 'hurtLight');
+              opp.stun = heavy ? 0.42 : 0.2;
+              opp.cool = Math.max(opp.cool, 0.3);
+            }
+          } else {
+            // 挥空：拳头没碰到，给一点"空气"提示
+            spawn(at.x + f.facing * 14, at.y, 'rgba(120,120,120,0.5)', 'dust', 3, 0.4);
           }
-          playClip(tgt, 'hurt');
         }
       }
 
-      // 动作结束回到待机
+      /* --- 片段播完 --- */
       if (!clip.loop && prog >= 1) {
-        f.state = 'idle';
-        f.clipT = 0;
-        f.clipDur = CLIPS.idle.dur;
-        f.didHit = false;
-        f.cool = rand(0.5, 1.6);
+        setState(f, 'idle');
+        f.cool = Math.max(f.cool, rand(0.25, 0.8));
       }
 
-      // 待机时决定下一步干什么
+      /* --- 待机时做决策 --- */
       if (f.state === 'idle') {
         f.cool -= dt;
-        if (f.cool <= 0) {
-          const tgt = fighters[f.partner];
-          if (!tgt || tgt.state === 'ko') {
-            f.cool = rand(0.4, 1.0);
-          } else {
-            const r = Math.random();
-            playClip(f, r < 0.45 ? 'jab' : r < 0.8 ? 'cross' : r < 0.92 ? 'kick' : 'jump');
-          }
+        f.lastDecision += dt;
+        if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > 0.1) {
+          f.lastDecision = 0;
+          applyDecision(f, opp, decide(f, opp));
         }
       }
     }
@@ -545,104 +764,150 @@ export function initFightBand(): void {
       s.life += dt;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
-      s.vy += 340 * dt;
+      s.vy += (s.kind === 'dust' ? 120 : 420) * dt;
+      if (s.kind === 'dust') s.vx *= 0.94;
     }
     sparks = sparks.filter((s) => s.life < s.max);
-    shake *= 0.84;
+    shake *= 0.82;
   };
 
-  /* ---------------- 绘制 ---------------- */
+  /* ---------- 绘制 ---------- */
 
-  const seg = (a: { x: number; y: number }, b: { x: number; y: number }, w: number) => {
+  const capsule = (a: Pt, b: Pt, ra: number, rb: number, fill: string) => {
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
     ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.lineWidth = w;
-    ctx.stroke();
+    ctx.arc(a.x, a.y, ra, ang + Math.PI / 2, ang + Math.PI * 1.5, false);
+    ctx.arc(b.x, b.y, rb, ang - Math.PI / 2, ang + Math.PI / 2, false);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
   };
 
-  const dot = (p: { x: number; y: number }, r: number) => {
+  const disc = (p: Pt, r: number, fill: string) => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, TAU);
+    ctx.fillStyle = fill;
     ctx.fill();
-  };
-
-  const drawBody = (pts: Record<string, { x: number; y: number }>, color: string, faceDir: number) => {
-    const dark = color;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = dark;
-    ctx.fillStyle = dark;
-
-    // 后侧手脚：稍淡一点，形成前后层次
-    ctx.globalAlpha *= 0.65;
-    seg(pts.pelvis, pts.kneeB, 4.5);
-    seg(pts.kneeB, pts.footB, 4.5);
-    dot(pts.footB, 2.6);
-    seg(pts.chest, pts.elbowB, 4.2);
-    seg(pts.elbowB, pts.handB, 4.2);
-    dot(pts.handB, 2.6);
-
-    ctx.globalAlpha /= 0.65;
-
-    // 躯干 + 头
-    seg(pts.pelvis, pts.chest, 6);
-    ctx.beginPath();
-    ctx.arc(pts.head.x, pts.head.y, L.headR, 0, TAU);
-    ctx.fill();
-    // 眼睛（朝面向方向）
-    ctx.save();
-    ctx.globalAlpha *= 0.9;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    dot({ x: pts.head.x + faceDir * 2.4, y: pts.head.y - 1.4 }, 1.9);
-    ctx.restore();
-    ctx.fillStyle = dark;
-
-    // 前侧手脚
-    seg(pts.chest, pts.elbowF, 4.6);
-    seg(pts.elbowF, pts.handF, 4.6);
-    dot(pts.handF, 2.9);
-    seg(pts.pelvis, pts.kneeF, 5);
-    seg(pts.kneeF, pts.footF, 5);
-    dot(pts.footF, 3);
   };
 
   const drawFighter = (f: Fighter) => {
-    const color = f.flash > 0.2 ? '#FFFFFF' : f.color;
+    const flashing = f.flash > 0.25;
+    const body = flashing ? '#FFFFFF' : f.skin.body;
+    const trim = flashing ? '#FFFFFF' : f.skin.trim;
+    const dark = flashing ? '#F0F0F0' : f.skin.dark;
+    const outline = 'rgba(20,16,12,0.55)';
 
-    // 影子
+    if (f.state === 'down' && f.ragdoll) {
+      const rd = f.ragdoll;
+      const g = (k: string) => ({ x: (rd[k] as Pt).x, y: (rd[k] as Pt).y });
+      drawRig(g, body, trim, dark, outline, 1);
+      return;
+    }
+
+    const { world, dy } = place(f);
+    const alpha = f.state === 'getup' ? f.getupFade : 1;
+
+    // 影子（腾空时缩小变淡）
+    const sh = Math.max(0.4, 1 - f.pose.lift / 40);
     ctx.save();
-    ctx.globalAlpha = 0.1;
-    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.13 * sh * alpha;
     ctx.beginPath();
-    const sx = f.x + f.knock;
-    ctx.ellipse(sx, groundY() + 2, 13, 3.2, 0, 0, TAU);
+    ctx.ellipse(f.x, groundY() + 1, 15 * sh * f.scale, 3.6 * sh, 0, 0, TAU);
+    ctx.fillStyle = '#000';
     ctx.fill();
     ctx.restore();
 
     ctx.save();
-    if (f.state === 'ko' && f.ragdoll) {
-      const rd = f.ragdoll;
-      const world: Record<string, { x: number; y: number }> = {};
-      for (const k of Object.keys(rd)) world[k] = { x: rd[k].x, y: rd[k].y };
-      drawBody(world, color, f.dir);
-    } else {
-      const pts = fk(f.pose);
-      const world = groundPose(f, pts);
-      drawBody(world, color, f.dir);
-    }
+    ctx.globalAlpha = alpha;
+    drawRig((k) => world[k], body, trim, dark, outline, alpha);
     ctx.restore();
 
     // 血条
-    if (f.state !== 'ko') {
-      const bw = 24;
-      const bx = f.x + f.knock - bw / 2;
-      const by = groundY() - 76;
-      ctx.fillStyle = 'rgba(0,0,0,0.16)';
-      ctx.fillRect(bx, by, bw, 3);
-      ctx.fillStyle = f.hp > 40 ? f.color : '#DD0100';
-      ctx.fillRect(bx, by, (bw * f.hp) / f.maxHp, 3);
+    if (f.state !== 'down') {
+      const w = 26;
+      const bx = f.x - w / 2;
+      const by = groundY() - 82;
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.fillRect(bx - 1, by - 1, w + 2, 4.5);
+      ctx.fillStyle = f.hp > 45 ? f.skin.body : '#DD0100';
+      ctx.fillRect(bx, by, (w * f.hp) / f.maxHp, 2.6);
     }
+  };
+
+  const drawRig = (
+    get: (k: string) => Pt,
+    body: string,
+    trim: string,
+    dark: string,
+    outline: string,
+    alpha: number
+  ) => {
+    const J = (k: string) => get(k);
+    const pelvis = J('pelvis');
+    const chest = J('chest');
+    const head = J('head');
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 后侧腿脚（暗一点，形成前后层次）
+    ctx.save();
+    ctx.globalAlpha *= 0.72;
+    capsule(J('hipB'), J('kneeB'), 4.4, 3.6, dark);
+    capsule(J('kneeB'), J('footB'), 3.4, 2.8, dark);
+    capsule(J('shoulderB'), J('elbowB'), 3.8, 3.2, dark);
+    capsule(J('elbowB'), J('handB'), 3.2, 2.8, dark);
+    disc(J('handB'), 3.1, dark);
+    ctx.restore();
+
+    // 前侧腿
+    capsule(J('hipF'), J('kneeF'), 5, 4, body);
+    capsule(J('kneeF'), J('footF'), 3.9, 3.1, body);
+    // 脚掌
+    const foot = J('footF');
+    const knee = J('kneeF');
+    const fa = Math.atan2(foot.y - knee.y, foot.x - knee.x);
+    capsule(foot, { x: foot.x + Math.cos(fa + Math.PI / 2) * 4.5, y: foot.y + Math.sin(fa + Math.PI / 2) * 1.2 }, 2.6, 2, body);
+
+    // 躯干（锥形：胸宽腰窄）
+    capsule(pelvis, chest, 5.6, 7.2, body);
+    // 腰带（撞色）
+    const pxv = chest.x - pelvis.x;
+    const pyv = chest.y - pelvis.y;
+    const pl = Math.hypot(pxv, pyv) || 1;
+    const nx = -pyv / pl;
+    const ny = pxv / pl;
+    const bw = 6.2;
+    capsule(
+      { x: pelvis.x + pxv * 0.22 + nx * bw, y: pelvis.y + pyv * 0.22 + ny * bw },
+      { x: pelvis.x + pxv * 0.22 - nx * bw, y: pelvis.y + pyv * 0.22 - ny * bw },
+      2.1,
+      2.1,
+      trim
+    );
+
+    // 头 + 头发 + 眼睛
+    const headR = L.headR;
+    disc(head, headR + 1.5, outline);
+    disc(head, headR, body);
+    // 头顶发块（撞色，制造辨识度）
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, headR + 0.4, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.lineTo(head.x, head.y - headR * 0.35);
+    ctx.closePath();
+    ctx.fillStyle = trim;
+    ctx.fill();
+    // 眼睛（朝面向方向）
+    const ex = head.x + (chest.x - pelvis.x) * 0.09;
+    disc({ x: ex + 2.6, y: head.y + 0.4 }, 1.7, '#171310');
+    disc({ x: ex - 2.6, y: head.y + 0.4 }, 1.7, '#171310');
+
+    // 前侧手臂 + 拳头
+    capsule(J('shoulderF'), J('elbowF'), 4.2, 3.6, body);
+    capsule(J('elbowF'), J('handF'), 3.5, 3, body);
+    const hand = J('handF');
+    disc(hand, 3.5, outline);
+    disc(hand, 3.1, body);
   };
 
   const render = () => {
@@ -651,25 +916,28 @@ export function initFightBand(): void {
     const dpr = canvas.width / Math.max(1, W);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    if (shake > 0.2) ctx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
+    if (shake > 0.15) ctx.translate(rand(-shake, shake) * 0.45, rand(-shake, shake) * 0.35);
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.09)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, groundY() + 0.5);
     ctx.lineTo(W, groundY() + 0.5);
     ctx.stroke();
 
-    // 同一排站在一条地面线上，按从左到右的顺序绘制即可
     fighters.forEach(drawFighter);
 
     for (const s of sparks) {
-      ctx.globalAlpha = Math.max(0, 1 - s.life / s.max);
+      const k = 1 - s.life / s.max;
+      ctx.globalAlpha = Math.max(0, k);
       ctx.fillStyle = s.color;
-      ctx.fillRect(s.x - 1.5, s.y - 1.5, 3.4, 3.4);
+      const sz = s.size * (s.kind === 'dust' ? 1 + (1 - k) : k);
+      ctx.fillRect(s.x - sz / 2, s.y - sz / 2, sz, sz);
     }
     ctx.globalAlpha = 1;
   };
+
+  /* ---------- 生命周期 ---------- */
 
   const resize = () => {
     const rect = canvas.getBoundingClientRect();
@@ -678,7 +946,7 @@ export function initFightBand(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    const want = W < 640 ? 2 : 4;
+    const want = W < 620 ? 2 : 4;
     if (fighters.length !== want) makeFighters(want);
     layout();
     render();
@@ -689,7 +957,8 @@ export function initFightBand(): void {
     if (!last) last = ts;
     const dt = Math.min(0.05, (ts - last) / 1000);
     last = ts;
-    if (!visible || reduceMotion) return;
+    // 只有「真的被人看着」才跑：在视口内 + 标签页可见 + 没开减少动效
+    if (reduceMotion || !visible || !tabVisible) return;
     update(dt);
     render();
   };
@@ -697,12 +966,34 @@ export function initFightBand(): void {
   resize();
   window.addEventListener('resize', () => {
     window.clearTimeout((window as any).__fightResize);
-    (window as any).__fightResize = window.setTimeout(resize, 150);
+    (window as any).__fightResize = window.setTimeout(resize, 140);
   });
 
   if ('IntersectionObserver' in window) {
-    new IntersectionObserver((e) => (visible = e[0]?.isIntersecting ?? true), { threshold: 0 }).observe(canvas);
+    new IntersectionObserver((e) => (visible = e[0]?.isIntersecting ?? false), { threshold: 0.15 }).observe(canvas);
+  } else {
+    visible = true;
   }
+  document.addEventListener('visibilitychange', () => {
+    tabVisible = document.visibilityState !== 'hidden';
+  });
+
   if (!reduceMotion) rafId = requestAnimationFrame(loop);
   window.addEventListener('pagehide', () => cancelAnimationFrame(rafId));
+
+  // 对外接口（将来接 AI API 用）
+  (window as any).takinolFight = {
+    setController,
+    /** 读取当前战况，方便外部 AI 参考 */
+    snapshot: () =>
+      fighters.map((f) => ({
+        hp: f.hp,
+        x: Math.round(f.x),
+        state: f.state,
+        facing: f.facing,
+        opponent: f.partner,
+      })),
+    /** 结束外部控制，回到本地 AI */
+    reset: () => setController(null),
+  };
 }
