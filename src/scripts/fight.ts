@@ -109,7 +109,7 @@ export interface Joints {
 
 /** 正向运动学：由关节角度算出各关节点坐标（骨盆在原点，y 向下为正） */
 /** 正向运动学：由关节角度（含深度外展）算出关节的三维坐标 */
-export const fk = (p: Pose): Joints => {
+export const fk = (p: Pose, swap = false): Joints => {
   // 方向：a = 矢状面角度（0 表示朝下），d = 深度外展角（正=靠近镜头）
   const dir = (a: number, d: number): Pt => {
     const cd = Math.cos(d);
@@ -229,9 +229,9 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_WIND = P({ lean: 0.22, head: -0.02, armUB: 0.9, armLB: 1.85, armUF: 1.0, armLF: 1.7, legUB: 0.55, legLB: -0.7, legUBD: 0, legUF: 0.3, legLF: -0.6, yaw: 0 });
-const SPIN_TURN = P({ lean: 0.12, head: 0.06, armUB: 0.55, armLB: 1.5, armUF: 1.1, armLF: 1.25, legUB: 1.2, legLB: -0.35, legUBD: 1.1, legUF: -0.1, legLF: 0.05, yaw: 1.1 });
-const SPIN_HIT = P({ lean: 0.06, head: 0.1, armUB: -0.5, armLB: 0.75, armUF: 0.5, armLF: 0.95, legUB: 1.571, legLB: 0.02, legUBD: 2.0, legUF: -0.12, legLF: 0.06, yaw: 2.0 });
+const SPIN_WIND = P({ lean: 0.2, head: -0.02, armUB: 0.9, armLB: 1.85, armUF: 1.0, armLF: 1.7, legUB: 0.45, legLB: -0.6, legUBD: 0, legUF: 0.3, legLF: -0.6, yaw: 0 });
+const SPIN_TURN = P({ lean: 0.14, head: 0.05, armUB: 0.6, armLB: 1.5, armUF: 1.05, armLF: 1.3, legUB: 0.85, legLB: -0.5, legUBD: 0.7, legUF: -0.12, legLF: 0.05, yaw: 2.4 });
+const SPIN_HIT = P({ lean: 0.08, head: 0.1, armUB: -0.5, armLB: 0.8, armUF: 0.5, armLF: 0.95, legUB: 1.35, legLB: 0.02, legUBD: 1.75, legUF: -0.12, legLF: 0.06, yaw: 3.6 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
@@ -256,6 +256,8 @@ const JUMP_CROUCH = P({ lean: 0.34, head: -0.12, armUB: -0.65, armLB: 0.8, armUF
 const JUMP_AIR = P({ lean: 0.1, head: 0.08, armUB: 1.6, armLB: 0.3, armUF: 1.75, armLF: 0.25, legUB: 0.8, legLB: -1.3, legUF: 0.95, legLF: -1.45, lift: 30 });
 const JUMP_LAND = P({ lean: 0.4, head: -0.14, armUB: -0.55, armLB: 0.95, armUF: -0.65, armLF: 1.05, legUB: 0.7, legLB: -1.45, legUF: 0.64, legLF: -1.6 });
 
+/** 踉跄：重心后倒，手臂张开保持平衡，一只脚向后撤 */
+const STUMBLE = P({ lean: -0.24, head: -0.3, armUB: -0.65, armLB: 1.25, armUF: -0.45, armLF: 1.15, legUB: -0.5, legLB: 0.55, legUF: 0.4, legLF: 0.22 });
 const GETUP_KNEEL = P({ lean: 0.55, head: 0.15, armUB: 0.7, armLB: 1.4, armUF: 0.9, armLF: 1.2, legUB: 1.5, legLB: -2.4, legUF: 0.35, legLF: -1.5 });
 
 interface Clip {
@@ -282,7 +284,7 @@ const CLIPS: Record<string, Clip> = {
   sideKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: SIDE_UP }, { t: 0.54, pose: SIDE_HIT }, { t: 0.7, pose: SIDE_HIT }, { t: 1, pose: GUARD }] },
   roundKick: { dur: 0.6, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.32, pose: ROUND_UP }, { t: 0.54, pose: ROUND_HIT }, { t: 0.7, pose: ROUND_HIT }, { t: 1, pose: GUARD }] },
   axeKick: { dur: 0.68, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: AXE_UP }, { t: 0.58, pose: AXE_HIT }, { t: 0.74, pose: AXE_HIT }, { t: 1, pose: GUARD }] },
-  spinKick: { dur: 1.0, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.2, pose: SPIN_WIND }, { t: 0.42, pose: SPIN_TURN }, { t: 0.6, pose: SPIN_HIT }, { t: 0.74, pose: SPIN_HIT }, { t: 1, pose: SPIN_END }] },
+  spinKick: { dur: 1.05, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SPIN_WIND }, { t: 0.42, pose: SPIN_TURN }, { t: 0.6, pose: SPIN_HIT }, { t: 0.74, pose: SPIN_HIT }, { t: 1, pose: SPIN_END }] },
   flyKick: { dur: 0.82, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.18, pose: FLY_CROUCH }, { t: 0.44, pose: FLY_AIR }, { t: 0.62, pose: FLY_AIR }, { t: 0.82, pose: FLY_LAND }, { t: 1, pose: GUARD }] },
   scissorKick: { dur: 0.92, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: SCISSOR_CROUCH }, { t: 0.38, pose: SCISSOR_A }, { t: 0.58, pose: SCISSOR_B }, { t: 0.78, pose: SCISSOR_LAND }, { t: 1, pose: GUARD }] },
 
@@ -291,6 +293,7 @@ const CLIPS: Record<string, Clip> = {
   hurtHeavy: { dur: 0.5, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.24, pose: HURT_HEAVY }, { t: 1, pose: GUARD }] },
   hurtUp: { dur: 0.48, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.22, pose: HURT_UP }, { t: 1, pose: GUARD }] },
   jump: { dur: 0.8, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.16, pose: JUMP_CROUCH }, { t: 0.4, pose: JUMP_AIR }, { t: 0.64, pose: JUMP_AIR }, { t: 0.82, pose: JUMP_LAND }, { t: 1, pose: GUARD }] },
+  stumble: { dur: 0.34, loop: false, keys: [{ t: 0, pose: GUARD }, { t: 0.3, pose: STUMBLE }, { t: 1, pose: GUARD }] },
   getup: { dur: 0.62, loop: false, keys: [{ t: 0, pose: GETUP_KNEEL }, { t: 1, pose: IDLE_A }] },
 };
 
@@ -500,6 +503,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     | 'hurtLight'
     | 'hurtHeavy'
     | 'hurtUp'
+    | 'stumble'
     | 'jab'
     | 'cross'
     | 'hook'
@@ -542,6 +546,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     lastDecision: number;
     emote: string | null;
     kb: number;
+    /** 被击后的踉跄剩余时间 */
+    stagger: number;
+    /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
+    armFront: 'B' | 'F';
     /** 无敌帧剩余时间（闪避用） */
     invuln: number;
     minX: number;
@@ -601,6 +609,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     lastDecision: 0,
     emote: null,
     kb: 0,
+    stagger: 0,
+    armFront: 'F',
     invuln: 0,
     minX: 20,
     maxX: 9999,
@@ -673,7 +683,7 @@ export function initFightBand(opts: FightOptions = {}): void {
   const FOCAL = 320;
 
   const place = (f: Fighter) => {
-    const j = fk(f.pose);
+    const j = fk(f.pose, f.facing < 0);
     const lowFeet = Math.max(j.footB.y, j.footF.y);
     const dy = groundY() - lowFeet - f.pose.lift - (1 - f.scale) * 20;
     const yaw = f.pose.yaw || 0;
@@ -686,7 +696,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       const x1 = q.x * cy + q.z * sy;
       const z1 = -q.x * sy + q.z * cy;
       // 透视：离镜头越远越小
-      const persp = FOCAL / (FOCAL + z1);
+      const persp = Math.max(0.9, Math.min(1.1, FOCAL / (FOCAL + z1)));
       out[k] = {
         x: f.x + f.facing * x1 * f.scale * persp,
         y: dy + q.y * f.scale * persp,
@@ -1154,22 +1164,23 @@ export function initFightBand(opts: FightOptions = {}): void {
           }
 
           // 按招式决定对手的反应姿态
+          opp.stagger = atk.react === 'light' ? 0.22 : 0.4;
           setState(opp, atk.react === 'up' ? 'hurtUp' : atk.react === 'heavy' ? 'hurtHeavy' : 'hurtLight');
           opp.stun = atk.react === 'light' ? 0.2 : atk.react === 'up' ? 0.5 : 0.42;
           opp.cool = Math.max(opp.cool, 0.3);
         }
       }
 
-      /* --- 片段播完 --- */
+      /* --- 片段播完：被击后先踉跄后退，再回架势 --- */
       if (!clip.loop && prog >= 1) {
-        setState(f, 'idle');
-        f.cool = Math.max(f.cool, rand(0.25, 0.8));
-      }
-
-      /* --- 待机时做决策（演示模式下不自动出手） --- */
-      if (!opts.demo && f.state === 'idle') {
-        f.cool -= dt;
-        f.lastDecision += dt;
+        if (f.stagger > 0 && (f.state === 'hurtLight' || f.state === 'hurtHeavy' || f.state === 'hurtUp')) {
+          f.stagger = 0;
+          setState(f, 'stumble');
+          f.cool = Math.max(f.cool, 0.3);
+        } else {
+          setState(f, 'idle');
+          f.cool = Math.max(f.cool, rand(0.25, 0.8));
+        }
         if (f.cool <= 0 && f.stun <= 0 && f.lastDecision > 0.1) {
           f.lastDecision = 0;
           applyDecision(f, opp, decide(f, opp));
@@ -1408,7 +1419,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const depthAlpha = (z: number) => Math.max(0.66, Math.min(1.06, 0.72 + (z + 14) * 0.016));
+    const depthAlpha = (z: number) => Math.max(0.85, Math.min(1.0, 0.9 + (z + 14) * 0.006));
 
     const zB = (get('elbowB').z || 0) + (get('handB').z || 0);
     const zF = (get('elbowF').z || 0) + (get('handF').z || 0);
@@ -1514,7 +1525,8 @@ export function initFightBand(opts: FightOptions = {}): void {
         body,
         trim,
         dark,
-        'down'
+        'down',
+        f.facing
       );
     } else {
       const { world } = place(f);

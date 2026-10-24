@@ -71,20 +71,23 @@ const files = readdirSync(photosDir)
 ---
 
 <Base title="照片" description="小猫的照片墙">
-  <!-- 底部孟菲斯装饰条：纯 CSS 画的经典孟菲斯元素，不挡照片、不挡点击 -->
-  <div class="memphis-strip" aria-hidden="true">
-    <span class="mz mz-dots"></span>
-    <span class="mz mz-zigzag"></span>
-    <span class="mz mz-squiggle"></span>
-    <span class="mz mz-grid"></span>
-    <span class="mz mz-confetti"></span>
-    <span class="mz-tri t1"></span>
-    <span class="mz-tri t2"></span>
-    <span class="mz-dot c1"></span>
-    <span class="mz-dot c2"></span>
-    <span class="mz-dot c3"></span>
-    <span class="mz-ring r1"></span>
-    <span class="mz-ring r2"></span>
+  <!-- 背景涂鸦层：美式街头涂鸦元素 × 孟菲斯配色，随机散落 + 随机浮动 -->
+  <div class="graffiti-bg" id="graffiti-bg" aria-hidden="true">
+    <span class="gz gz-splat" style="color: var(--pink)"></span>
+    <span class="gz gz-splat" style="color: var(--blue); --gsz: 64px"></span>
+    <span class="gz gz-splat" style="color: var(--lime); --gsz: 76px"></span>
+    <span class="gz gz-star outline" style="color: var(--yellow)"></span>
+    <span class="gz gz-star outline" style="color: var(--pink); --gsz: 24px"></span>
+    <span class="gz gz-star" style="color: var(--blue); --gsz: 30px"></span>
+    <span class="gz gz-arrow" style="color: var(--yellow)"></span>
+    <span class="gz gz-arrow" style="color: var(--lime); --gsz: 52px"></span>
+    <span class="gz gz-bubble" style="color: var(--pink)"></span>
+    <span class="gz gz-bubble" style="color: var(--blue); --gsz: 34px"></span>
+    <span class="gz gz-bubble" style="color: var(--yellow); --gsz: 56px"></span>
+    <span class="gz gz-tagline" style="color: var(--pink)"></span>
+    <span class="gz gz-tagline" style="color: var(--blue); --gsz: 64px"></span>
+    <span class="gz gz-crown" style="color: var(--yellow)"></span>
+    <span class="gz gz-crown" style="color: var(--pink); --gsz: 30px"></span>
   </div>
   <div class="wall" id="wall">
     <div class="wall-title"></div>
@@ -127,146 +130,152 @@ const files = readdirSync(photosDir)
 </Base>
 
 <style>
-  /* ---------- 底部孟菲斯装饰条 ----------
-     经典孟菲斯元素：波点 / 锯齿线 / 波浪线 / 网格 / 纸屑 / 三角 / 圆环
-     全部纯 CSS 画，pointer-events:none 不影响照片拖拽 */
-  .memphis-strip {
+  /* ---------- 背景美式涂鸦元素（孟菲斯配色）----------
+     喷漆泼溅 / 涂鸦星星 / 街头箭头 / 气泡圈 / 涂鸦线
+     随机散落 + 各自随机浮动，JS 只负责随机摆放和浮动参数 */
+  .graffiti-bg {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 56px; /* 悬浮在底部访客条上方 */
-    height: 72px;
+    inset: 0;
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
-    opacity: 0.75;
   }
-  .mz {
+  .gz {
     position: absolute;
-    bottom: 8px;
+    left: var(--gx);
+    top: var(--gy);
+    opacity: var(--go, 0.5);
+    animation: gzFloat var(--gdur, 6s) ease-in-out var(--gdelay, 0s) infinite alternate;
   }
-  /* 波点块：孟菲斯经典 Bacterio 细点纹 */
-  .mz-dots {
-    left: 3%;
-    width: 120px;
-    height: 44px;
-    background-image: radial-gradient(#de0c62 2px, transparent 2.4px);
-    background-size: 13px 13px;
-  }
-  /* 锯齿线（zigzag） */
-  .mz-zigzag {
-    left: 16%;
-    width: 150px;
-    height: 16px;
-    background:
-      linear-gradient(135deg, #2242c7 25%, transparent 25%) 0 0 / 16px 16px,
-      linear-gradient(225deg, #2242c7 25%, transparent 25%) 0 0 / 16px 16px;
-    background-repeat: repeat-x;
-  }
-  /* 波浪线（squiggle）——用重复径向渐变拼半圆弧 */
-  .mz-squiggle {
-    left: 30%;
-    width: 130px;
-    height: 12px;
-    background: radial-gradient(circle at 8px -4px, transparent 8px, #9acd32 8.5px, #9acd32 11.5px, transparent 12px);
-    background-size: 16px 16px;
-  }
-  /* 网格块 */
-  .mz-grid {
-    left: 44%;
-    width: 90px;
-    height: 44px;
-    background-image:
-      linear-gradient(#070d0d 1.5px, transparent 1.5px),
-      linear-gradient(90deg, #070d0d 1.5px, transparent 1.5px);
-    background-size: 11px 11px;
-    opacity: 0.55;
-  }
-  /* 纸屑块：孟菲斯 Terrazzo 水磨石纹 */
-  .mz-confetti {
-    right: 26%;
-    width: 110px;
-    height: 46px;
-    background-image:
-      radial-gradient(#ffdf22 3px, transparent 3.5px),
-      radial-gradient(#de0c62 2.5px, transparent 3px),
-      radial-gradient(#2242c7 2px, transparent 2.5px);
-    background-position: 0 0, 7px 9px, 3px 4px;
-    background-size: 22px 22px, 22px 22px, 22px 22px;
-  }
-  /* 小三角 */
-  .mz-tri {
-    position: absolute;
-    bottom: 14px;
-    width: 0;
-    height: 0;
-  }
-  .mz-tri.t1 {
-    right: 14%;
-    border-left: 11px solid transparent;
-    border-right: 11px solid transparent;
-    border-bottom: 19px solid #de0c62;
-  }
-  .mz-tri.t2 {
-    left: 57%;
-    border-left: 9px solid transparent;
-    border-right: 9px solid transparent;
-    border-bottom: 16px solid #ffdf22;
-  }
-  /* 实心小圆点 */
-  .mz-dot {
-    position: absolute;
-    border-radius: 50%;
-  }
-  .mz-dot.c1 {
-    left: 9%;
-    bottom: 34px;
-    width: 12px;
-    height: 12px;
-    background: #2242c7;
-  }
-  .mz-dot.c2 {
-    right: 7%;
-    bottom: 26px;
-    width: 14px;
-    height: 14px;
-    background: #9acd32;
-  }
-  .mz-dot.c3 {
-    left: 64%;
-    bottom: 40px;
-    width: 9px;
-    height: 9px;
-    background: #de0c62;
-  }
-  /* 空心圆环（孟菲斯常见圈圈） */
-  .mz-ring {
-    position: absolute;
-    border-radius: 50%;
-    border: 3px solid #2242c7;
-  }
-  .mz-ring.r1 {
-    right: 19%;
-    bottom: 34px;
-    width: 20px;
-    height: 20px;
-    border-color: #de0c62;
-  }
-  .mz-ring.r2 {
-    left: 51%;
-    bottom: 18px;
-    width: 15px;
-    height: 15px;
-  }
-  @media (max-width: 640px) {
-    .memphis-strip {
-      height: 52px;
-      opacity: 0.5;
+  /* 每个元素浮动轨迹不同：主动画上下飘，::after 反向左右飘，合成随机漂移感 */
+  @keyframes gzFloat {
+    from {
+      transform: translate(0, 0) rotate(var(--grot, 0deg)) scale(1);
     }
-    .mz-grid,
-    .mz-squiggle,
-    .mz-ring.r2 {
-      display: none; /* 手机上少放几块，避免太挤 */
+    to {
+      transform: translate(var(--gdx, 0px), var(--gdy, 14px)) rotate(calc(var(--grot, 0deg) + var(--gspin, 8deg)))
+        scale(var(--gscale, 1.06));
+    }
+  }
+  /* 孟菲斯色卡变量 */
+  .gz {
+    --pink: #de0c62;
+    --blue: #2242c7;
+    --yellow: #ffdf22;
+    --lime: #9acd32;
+  }
+
+  /* 1) 喷漆泼溅：一大一小两团喷点 + 飞沫（radial-gradient 堆叠） */
+  .gz-splat {
+    width: var(--gsz, 90px);
+    height: var(--gsz, 90px);
+    background:
+      radial-gradient(circle at 50% 50%, currentColor 0 34%, transparent 36%),
+      radial-gradient(circle at 78% 24%, currentColor 0 9%, transparent 11%),
+      radial-gradient(circle at 16% 72%, currentColor 0 7%, transparent 9%),
+      radial-gradient(circle at 70% 82%, currentColor 0 5%, transparent 7%),
+      radial-gradient(circle at 88% 60%, currentColor 0 4%, transparent 6%),
+      radial-gradient(circle at 30% 12%, currentColor 0 3.5%, transparent 5.5%),
+      radial-gradient(circle at 12% 34%, currentColor 0 3%, transparent 5%),
+      radial-gradient(circle at 58% 6%, currentColor 0 2.5%, transparent 4.5%);
+    filter: blur(0.4px); /* 喷漆的轻微雾边 */
+  }
+  .gz-splat::after {
+    /* 喷漆罐拖尾 */
+    content: '';
+    position: absolute;
+    right: -46%;
+    top: 30%;
+    width: 46%;
+    height: 10%;
+    border-radius: 50%;
+    background: currentColor;
+    transform: rotate(-24deg);
+    opacity: 0.45;
+  }
+
+  /* 2) 涂鸦星星（街头四角星 sparkle） */
+  .gz-star {
+    width: var(--gsz, 34px);
+    height: var(--gsz, 34px);
+    background: currentColor;
+    clip-path: polygon(
+      50% 0%,
+      61% 39%,
+      100% 50%,
+      61% 61%,
+      50% 100%,
+      39% 61%,
+      0% 50%,
+      39% 39%
+    );
+  }
+  /* 涂鸦星星常带黑色描边感 —— 用双层：外层深色偏移 */
+  .gz-star.outline::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #070d0d;
+    clip-path: inherit;
+    transform: translate(2.5px, 2.5px);
+    z-index: -1;
+  }
+
+  /* 3) 街头箭头（graffiti arrow）：粗描边折角箭头 */
+  .gz-arrow {
+    width: var(--gsz, 70px);
+    height: calc(var(--gsz, 70px) * 0.62);
+    background: currentColor;
+    clip-path: polygon(
+      0% 55%,
+      55% 55%,
+      55% 25%,
+      100% 62%,
+      55% 100%,
+      55% 70%,
+      0% 70%
+    );
+    filter: drop-shadow(2.5px 2.5px 0 #070d0d); /* 涂鸦黑描边 */
+  }
+
+  /* 4) 气泡圈（throw-up 气泡字母的抽象圆环）：粗环 + 黑描边 */
+  .gz-bubble {
+    width: var(--gsz, 46px);
+    height: var(--gsz, 46px);
+    border-radius: 50%;
+    border: calc(var(--gsz, 46px) * 0.24) solid currentColor;
+    filter: drop-shadow(2px 3px 0 #070d0d);
+  }
+
+  /* 5) 涂鸦波浪签线（tag squiggle）：粗笔刷曲线 */
+  .gz-tagline {
+    width: var(--gsz, 80px);
+    height: calc(var(--gsz, 80px) * 0.3);
+    background: radial-gradient(circle at 6px -3px, transparent 7px, currentColor 7.5px, currentColor 12.5px, transparent 13px);
+    background-size: 18px 18px;
+    filter: drop-shadow(1.5px 2px 0 #070d0d);
+  }
+
+  /* 6) 皇冠（涂鸦之王 crown，街头常见 tag 符号） */
+  .gz-crown {
+    width: var(--gsz, 40px);
+    height: calc(var(--gsz, 40px) * 0.72);
+    background: currentColor;
+    clip-path: polygon(
+      0% 100%,
+      8% 30%,
+      30% 62%,
+      50% 0%,
+      70% 62%,
+      92% 30%,
+      100% 100%
+    );
+    filter: drop-shadow(2px 2.5px 0 #070d0d);
+  }
+
+  @media (max-width: 640px) {
+    .gz {
+      opacity: calc(var(--go, 0.5) * 0.6); /* 手机上更淡 */
     }
   }
 
@@ -567,6 +576,32 @@ const files = readdirSync(photosDir)
 <script>
   const wall = document.getElementById('wall');
   const photos = Array.from(wall?.querySelectorAll('.photo') ?? []);
+
+  // 背景涂鸦：随机散落 + 随机浮动（每次刷新/打开都重新随机分布）
+  {
+    const bg = document.getElementById('graffiti-bg');
+    if (bg) {
+      const items = Array.from(bg.querySelectorAll('.gz')) as HTMLElement[];
+      items.forEach((el) => {
+        const gsz = parseFloat(getComputedStyle(el).getPropertyValue('--gsz')) || 40;
+        // 散落范围：全屏，边缘留一点余量避免被裁掉
+        const x = Math.random() * Math.max(0, window.innerWidth - gsz - 40) + 20;
+        const y = Math.random() * Math.max(0, window.innerHeight - gsz - 100) + 20; // 底部避开访客条
+        el.style.setProperty('--gx', x.toFixed(0) + 'px');
+        el.style.setProperty('--gy', y.toFixed(0) + 'px');
+        // 每个元素自己的浮动参数：幅度、周期、延迟、旋转、缩放都随机
+        el.style.setProperty('--gdx', ((Math.random() - 0.5) * 46).toFixed(0) + 'px');
+        el.style.setProperty('--gdy', ((Math.random() - 0.5) * 40).toFixed(0) + 'px');
+        el.style.setProperty('--grot', ((Math.random() - 0.5) * 50).toFixed(0) + 'deg');
+        el.style.setProperty('--gspin', ((Math.random() - 0.5) * 22).toFixed(0) + 'deg');
+        el.style.setProperty('--gscale', (1 + Math.random() * 0.18).toFixed(2));
+        el.style.setProperty('--gdur', (4 + Math.random() * 5).toFixed(1) + 's');
+        el.style.setProperty('--gdelay', (-Math.random() * 6).toFixed(1) + 's'); // 负延迟：一进来各自已在浮动中
+        el.style.setProperty('--go', (0.3 + Math.random() * 0.35).toFixed(2));
+      });
+    }
+  }
+
   if (photos.length) {
     // 固定种子的伪随机：每次刷新位置基本一致，不会乱跳
     function mulberry32(seed: number) {
