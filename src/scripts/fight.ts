@@ -1298,17 +1298,16 @@ export function initFightBand(opts: FightOptions = {}): void {
   };
 
   /** 拳头到对手躯干的距离（判定是否真的打到了） */
-  const contactCheck = (attacker: Fighter, target: Fighter, reachMul: number, part: StrikePart, tipLen = 0): { hit: boolean; at: Pt } => {
+  /** 攻击点：手/脚/肘/膝，或沿前臂刚性延伸的武器尖端，或链锤甩球 */
+  const attackPoint = (attacker: Fighter, part: StrikePart, tipLen = 0): Pt => {
     const aw = place(attacker).world;
-    const tw = place(target).world;
-    let fist = aw[part as keyof Joints];
     if (tipLen === -1) {
-      // 链锤：接触点是甩动的末端刺球（stepDangle 算出的 trinket 点）
       const tr = attacker.trinket;
-      if (tr && !Number.isNaN(tr.x)) fist = tr;
-    } else if (tipLen > 0) {
-      // 刚性武器：接触点沿前臂方向从手延伸 tipLen（跟绘制时的 ext() 一致）
-      const hand = aw[part as keyof Joints];
+      if (tr && !Number.isNaN(tr.x)) return tr;
+      tipLen = 14; // 演示定位时链球还没甩出去，用手前 14px 近似
+    }
+    const hand = aw[part as keyof Joints];
+    if (tipLen > 0) {
       const elbowKey = part === 'handB' ? 'elbowB' : part === 'handF' ? 'elbowF' : null;
       if (elbowKey) {
         const elbow = aw[elbowKey as keyof Joints];
@@ -1316,9 +1315,15 @@ export function initFightBand(opts: FightOptions = {}): void {
         const dy = hand.y - elbow.y;
         const d = Math.hypot(dx, dy) || 1;
         const len = tipLen * attacker.scale * (GEAR_SPEC[attacker.build]?.bulk ?? 1);
-        fist = { x: hand.x + (dx / d) * len, y: hand.y + (dy / d) * len, z: hand.z };
+        return { x: hand.x + (dx / d) * len, y: hand.y + (dy / d) * len, z: hand.z };
       }
     }
+    return hand;
+  };
+
+  const contactCheck = (attacker: Fighter, target: Fighter, reachMul: number, part: StrikePart, tipLen = 0): { hit: boolean; at: Pt } => {
+    const tw = place(target).world;
+    const fist = attackPoint(attacker, part, tipLen);
     const fistReach = reachMul;
     // 目标躯干当成一条线段（骨盆↔胸腔），算拳头到它的距离
     // 受击盒：骨盆 → 头（含躯干和头，打头/上勾拳都算命中）
@@ -1961,6 +1966,21 @@ export function initFightBand(opts: FightOptions = {}): void {
     d.clipDur = CLIPS.idle.dur;
 
     if (e.kind === 'attack') {
+      setState(a, e.key as State);
+      const atk0 = ATTACKS[e.key];
+      const h0 = atk0?.hits[0];
+      if (atk0 && h0 && !atk0.projectile) {
+        // 自动把目标摆到「命中帧攻击点」：每招/每英雄都算，不再手调距离
+        const clip0 = CLIPS[e.key] ?? CLIPS.idle;
+        const savedX = a.x;
+        const savedPose = a.pose;
+        a.x = a.x + a.facing * (atk0.forward ?? 0) * h0.at * clip0.dur;
+        a.pose = sampleClip(clip0, h0.at);
+        const ap = attackPoint(a, h0.part ?? atk0.part, h0.tip ?? 0);
+        a.x = savedX;
+        a.pose = savedPose;
+        d.x = ap.x + 11 * d.scale;
+      }
       setState(a, e.key as State);
     } else if (e.kind === 'react') {
       setState(d, e.key as State);
