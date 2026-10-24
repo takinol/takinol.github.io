@@ -229,11 +229,11 @@ const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, 
 const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0.03, legUF: 0.95, legLF: 0.05 });
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
-const SPIN_WIND = P({ lean: 0.18, head: -0.05, armUB: 0.85, armLB: 1.8, armUF: 1.0, armLF: 1.65, legUB: 0.3, legLB: -0.4, legUBD: 0, legUF: 0.35, legLF: -0.55, yaw: 0 });
+const SPIN_WIND = P({ lean: 0.18, head: -0.05, armUB: 0.85, armLB: 1.8, armUF: 1.0, armLF: 1.65, legUB: 0.35, legLB: -0.55, legUBD: 0, legUF: 0.3, legLF: -0.4, legUFD: 0, yaw: 0 });
 
-const SPIN_BACK = P({ lean: 0.08, head: 0.18, armUB: 0.35, armLB: 1.3, armUF: 0.9, armLF: 1.1, legUB: -0.8, legLB: -0.4, legUBD: -0.2, legUF: 0.08, legLF: -0.2, yaw: 3.14 });
-const SPIN_RETURN = P({ lean: 0.1, head: 0.05, armUB: 0.6, armLB: 1.4, armUF: 1.0, armLF: 1.3, legUB: -0.5, legLB: 0.2, legUBD: 0, legUF: 0.15, legLF: -0.1, yaw: 5.2 });
-const SPIN_HIT = P({ lean: -0.12, head: 0.22, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0.02, legUBD: -0.25, legUF: -0.04, legLF: 0.06, yaw: 3.14 });
+const SPIN_BACK = P({ lean: 0.08, head: 0.18, armUB: 0.35, armLB: 1.3, armUF: 0.9, armLF: 1.1, legUB: 0.08, legLB: -0.2, legUBD: 0, legUF: -0.8, legLF: -0.4, legUFD: -0.2, yaw: 3.14 });
+const SPIN_RETURN = P({ lean: 0.1, head: 0.05, armUB: 0.6, armLB: 1.4, armUF: 1.0, armLF: 1.3, legUB: 0.15, legLB: -0.1, legUBD: 0, legUF: -0.5, legLF: 0.2, legUFD: 0, yaw: 5.2 });
+const SPIN_HIT = P({ lean: -0.12, head: 0.22, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -0.04, legLB: 0.06, legUBD: 0, legUF: -1.9, legLF: 0.02, legUFD: -0.25, yaw: 3.14 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0.2, legUBD: 0, legUF: 0.32, legLF: 0.12, yaw: 6.2832 });
 
 /** 腾空飞踢：跳起来前冲踢 */
@@ -335,7 +335,7 @@ const ATTACKS: Record<string, Atk> = {
   sideKick: { part: 'footF', hits: [{ at: 0.54, dmg: [18, 27], reach: 1.35, knock: 430 }], hitstop: 0.08, react: 'heavy' },
   roundKick: { part: 'footF', hits: [{ at: 0.54, dmg: [16, 24], reach: 1.3, knock: 300 }], hitstop: 0.075, react: 'heavy' },
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
-  spinKick: { part: 'footB', hits: [{ at: 0.5, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
+  spinKick: { part: 'footF', hits: [{ at: 0.5, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.095, react: 'heavy', far: true },
   flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
   scissorKick: {
     part: 'footF',
