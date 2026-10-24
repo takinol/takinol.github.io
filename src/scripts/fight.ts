@@ -1563,6 +1563,43 @@ export function initFightBand(opts: FightOptions = {}): void {
     drawArm(backArmIsFarther ? 'F' : 'B', body);
   };
 
+  /** 后旋踢转圈阶段：整个人旋转成残影（身体+腿一起转圈，而不是腿绕圈） */
+  const drawSpinBlur = (f: Fighter) => {
+    const p = place(f).world.pelvis;
+    const h = 46 * f.scale;
+    const w = 13 * f.scale;
+
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath();
+    ctx.ellipse(f.x, groundY() + 1, 16 * f.scale, 3.4, 0, 0, TAU);
+    ctx.fillStyle = "#000";
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(f.x, p.y - h * 0.5);
+    for (let i = -2; i <= 2; i++) {
+      ctx.globalAlpha = 0.16 * (1 - Math.abs(i) / 3);
+      ctx.fillStyle = f.skin.body;
+      ctx.beginPath();
+      ctx.ellipse(i * 2.5 * f.scale, h * 0.5, w, h * 0.5, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.strokeStyle = f.skin.dark;
+    ctx.lineWidth = 1.4 * f.scale;
+    ctx.globalAlpha = 0.35;
+    for (let k = 0; k < 5; k++) {
+      const yy = h * 0.16 + (h * 0.68 * k) / 4;
+      const ext = (k % 2) * 7 * f.scale;
+      ctx.beginPath();
+      ctx.moveTo(-w - 5 * f.scale - ext, yy);
+      ctx.lineTo(w + 5 * f.scale + ext, yy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
   const drawFighter = (f: Fighter) => {
     const flashing = f.flash > 0.25;
     const body = flashing ? '#FFFFFF' : f.skin.body;
@@ -1577,6 +1614,12 @@ export function initFightBand(opts: FightOptions = {}): void {
     const faceCam = -Math.sin(yaw);
     const side = Math.cos(yaw) >= 0 ? f.facing : -f.facing;
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
+
+    // 后旋踢转圈阶段：整个身体旋转成残影（不是腿绕圈）
+    if (f.state === 'spinKick' && f.clipDur > 0 && f.clipT / f.clipDur < 0.7) {
+      drawSpinBlur(f);
+      return;
+    }
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
     ctx.beginPath();
