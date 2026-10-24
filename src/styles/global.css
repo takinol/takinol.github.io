@@ -1799,3 +1799,98 @@ html:not([data-theme="dark"]) .icon-sun {
   font-size: 0.78em;
   opacity: 0.55;
 }
+
+/* ---------- 列表卡片封面图 ---------- */
+.post-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 封面照片垫在文字下面；透明度由文章 frontmatter 的 coverOpacity 控制 */
+.pc-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  /* 左侧稍淡，保证文字清晰；右侧照片更完整 */
+  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3), #000 58%);
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3), #000 58%);
+}
+
+/* 卡片内容浮在封面之上 */
+.post-card > :not(.pc-cover) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 右侧标签集合 ---------- */
+.tag-cloud {
+  margin-bottom: 22px;
+}
+
+.tag-cloud-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+.tag-cloud-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.tc-chip:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.tc-chip.is-active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tc-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.tag-empty {
+  margin: 24px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* 手机端：右侧栏默认隐藏，但带标签集合时要显示（排到文章列表上方） */
+@media (max-width: 920px) {
+  .toc-col.has-tags {
+    display: block;
+    order: -1;
+    margin-bottom: 22px;
+  }
+}

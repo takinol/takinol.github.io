@@ -14,6 +14,19 @@ function minutesRead(post: any): number {
   const chars = body.replace(/\s+/g, '').length;
   return Math.max(1, Math.round(chars / 400));
 }
+
+// 右侧标签集合：统计每个标签出现次数，按次数从多到少排
+const tagCount = new Map<string, number>();
+for (const p of posts) {
+  for (const t of p.data.tags ?? []) {
+    const key = String(t).trim();
+    if (!key) continue;
+    tagCount.set(key, (tagCount.get(key) ?? 0) + 1);
+  }
+}
+const tagList = [...tagCount.entries()].sort(
+  (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hans-CN')
+);
 ---
 
 <Base title="Blog" description="全部文章列表">
@@ -26,9 +39,20 @@ function minutesRead(post: any): number {
 
       {
         posts.length > 0 ? (
-          <div style="margin-top: 36px">
+          <div style="margin-top: 36px" id="post-list">
             {posts.map((post) => (
-              <a class="post-card" href={`/blog/${post.id}/`}>
+              <a
+                class="post-card"
+                href={`/blog/${post.id}/`}
+                data-tags={(post.data.tags ?? []).join(',')}
+              >
+                {post.data.cover && (
+                  <span
+                    class="pc-cover"
+                    aria-hidden="true"
+                    style={`background-image:url('${post.data.cover}');opacity:${post.data.coverOpacity}`}
+                  />
+                )}
                 <div class="pc-meta">
                   <span>{dateFmt.format(post.data.date)}</span>
                   {post.data.updated && (
@@ -56,9 +80,57 @@ function minutesRead(post: any): number {
           <p style="margin-top: 40px; color: var(--text-muted)">还没有文章。</p>
         )
       }
+
+      <p class="tag-empty" id="tag-empty" hidden>这个标签下还没有文章。</p>
     </article>
-    <aside class="toc-col">
+
+    <aside class={`toc-col${tagList.length > 0 ? ' has-tags' : ''}`}>
+      {
+        tagList.length > 0 && (
+          <section class="tag-cloud" id="tag-cloud" aria-label="标签筛选">
+            <div class="tag-cloud-title">标签</div>
+            <div class="tag-cloud-list">
+              <button type="button" class="tc-chip is-active" data-tag="">
+                全部<span class="tc-count">{posts.length}</span>
+              </button>
+              {tagList.map(([tag, count]) => (
+                <button type="button" class="tc-chip" data-tag={tag}>
+                  {tag}
+                  <span class="tc-count">{count}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )
+      }
       <Toc />
     </aside>
   </div>
+
+  <script>
+    // 点击右侧标签筛选文章（纯前端，不刷新页面）
+    const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.tc-chip'));
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.post-card'));
+    const emptyEl = document.getElementById('tag-empty');
+    let active = '';
+
+    const apply = () => {
+      let shown = 0;
+      for (const card of cards) {
+        const tags = (card.dataset.tags || '').split(',').filter(Boolean);
+        const ok = !active || tags.includes(active);
+        card.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      }
+      if (emptyEl) emptyEl.hidden = shown > 0;
+    };
+
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        active = chip.dataset.tag || '';
+        chips.forEach((c) => c.classList.toggle('is-active', c === chip));
+        apply();
+      });
+    });
+  </script>
 </Base>

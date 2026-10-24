@@ -155,6 +155,10 @@ const blog = defineCollection({
     // 用法：在文章顶部的 frontmatter 里加一行 password: "你的密码"
     // （加不加引号都行，coerce 会自动转成字符串；想取消加密就把这一行删掉）
     password: z.coerce.string().optional(),
+    // 封面图：在列表卡片里显示一张照片（填图片路径，如 /photos/xxx.jpg）
+    // coverOpacity 控制这张照片的透明度，0~1，默认 0.22（越小越淡，越不影响看文字）
+    cover: z.string().optional(),
+    coverOpacity: z.coerce.number().min(0).max(1).default(0.22),
   }),
 });
 
