@@ -561,6 +561,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     counterWindow: number;
     /** 连招窗口：命中后短暂提升快速招权重 */
     comboTimer: number;
+    /** 当前连招步骤（null=不在连招中） */
+    comboSteps: string[] | null;
+    comboIndex: number;
     downTimer: number;
     ragdoll: Record<string, Pt & { px: number; py: number }> | null;
     links: { a: string; b: string; len: number }[];
@@ -633,6 +636,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     intentLock: 0,
     counterWindow: 0,
     comboTimer: 0,
+    comboSteps: null,
+    comboIndex: 0,
     downTimer: 0,
     ragdoll: null,
     links: [],
@@ -823,6 +828,15 @@ export function initFightBand(opts: FightOptions = {}): void {
   });
 
   const ATTACK_KEYS = Object.keys(ATTACKS);
+
+  /** 连招表：命中后按概率接下一段 */
+  const COMBOS: { steps: string[]; chance: number }[] = [
+    { steps: ['jab', 'cross', 'hook'], chance: 0.7 },
+    { steps: ['snapKick', 'roundKick'], chance: 0.6 },
+    { steps: ['hook', 'uppercut'], chance: 0.6 },
+    { steps: ['pushKick', 'sideKick'], chance: 0.55 },
+    { steps: ['jab', 'cross'], chance: 0.75 },
+  ];
 
   /** 招式元数据：起手/收招（秒）+ 战术标签 */
   const MOVE_META: Record<string, { startup: number; recovery: number; breakGuard?: boolean; finisher?: boolean; fast?: boolean; counter?: boolean }> = {
@@ -1109,6 +1123,8 @@ export function initFightBand(opts: FightOptions = {}): void {
         s.vy += 260 * dt;
       }
       sparks = sparks.filter((s) => s.life < s.max);
+    for (const p of popups) { p.life += dt; p.y -= 34 * dt; }
+    popups = popups.filter((p) => p.life < p.max);
       shake *= 0.86;
       return;
     }
@@ -1129,6 +1145,7 @@ export function initFightBand(opts: FightOptions = {}): void {
 
       if (f.counterWindow > 0) f.counterWindow -= dt;
       if (f.comboTimer > 0) f.comboTimer -= dt;
+      if (f.comboTimer <= 0) { f.comboSteps = null; f.comboIndex = 0; }
       if (f.sway !== 0) {
         f.sway *= Math.exp(-dt * 7);
         if (Math.abs(f.sway) < 0.02) f.sway = 0;
@@ -1230,11 +1247,15 @@ export function initFightBand(opts: FightOptions = {}): void {
           const blocking = opp.state === 'block';
           const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * (blocking ? 0.22 : 1));
           opp.hp = Math.max(0, opp.hp - dmg);
+          popups.push({ x: at.x + rand(-6, 6), y: at.y - 26, text: '-' + dmg, life: 0, max: 0.9, color: blocking ? '#6BA8D6' : '#E23B2E' });
           shake = Math.max(shake, blocking ? 2 : h.knock > 320 ? 6 : 4);
 
           if (blocking) {
             spawn(at.x, at.y, '#9AD9FF', 'block', 6, 0.8);
             opp.kb = f.facing * 90;
+            opp.sway = 0.25;
+            opp.counterWindow = 0.25;
+            f.comboSteps = null;
             f.kb = -f.facing * 60;
             hitstop = Math.max(hitstop, 0.03);
             continue;
@@ -1242,6 +1263,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
           opp.flash = 1;
           opp.kb = f.facing * h.knock;
+          opp.sway = h.knock > 320 ? 1 : 0.55;
+          f.comboTimer = 0.45;
           hitstop = Math.max(hitstop, atk.hitstop);
           spawn(at.x, at.y, opp.skin.trim, 'hit', h.knock > 320 ? 11 : 7, h.knock > 320 ? 1.35 : 1);
 
@@ -1249,6 +1272,31 @@ export function initFightBand(opts: FightOptions = {}): void {
             spawn(at.x, at.y, '#FAC901', 'hit', 14, 1.6);
             startRagdoll(opp);
             break;
+
+          // 被打断：对手的连招清零
+          opp.comboSteps = null;
+          opp.comboIndex = 0;
+
+          // 连招：命中后按连招表接下一段
+          if (f.comboSteps) {
+            const nextIdx = f.comboIndex + 1;
+            if (nextIdx < f.comboSteps.length && Math.random() < 0.7) {
+              f.comboIndex = nextIdx;
+              f.cool = 0;
+              f.intentLock = 0;
+              setState(f, f.comboSteps[nextIdx] as State);
+            } else {
+              f.comboSteps = null;
+              f.comboIndex = 0;
+            }
+          } else if (Math.random() < 0.45) {
+            const c = COMBOS[Math.floor(Math.random() * COMBOS.length)];
+            f.comboSteps = c.steps;
+            f.comboIndex = 0;
+            f.cool = 0;
+            f.intentLock = 0;
+            setState(f, c.steps[0] as State);
+          }
           }
 
           // 按招式决定对手的反应姿态
@@ -1293,6 +1341,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (s.kind === 'dust') s.vx *= 0.94;
     }
     sparks = sparks.filter((s) => s.life < s.max);
+    for (const p of popups) { p.life += dt; p.y -= 34 * dt; }
+    popups = popups.filter((p) => p.life < p.max);
     shake *= 0.82;
   };
 
@@ -1931,6 +1981,21 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.fillStyle = s.color;
       const sz = s.size * (s.kind === 'dust' ? 1 + (1 - k) : k);
       ctx.fillRect(s.x - sz / 2, s.y - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+
+    // 伤害飘字（-XX）
+    for (const p of popups) {
+      const k = 1 - p.life / p.max;
+      ctx.globalAlpha = Math.max(0, 1 - k * k);
+      ctx.font = `bold ${13 + (1 - k) * 4}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, p.x, p.y);
     }
     ctx.globalAlpha = 1;
 
