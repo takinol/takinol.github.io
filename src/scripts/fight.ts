@@ -1979,7 +1979,7 @@ export function initFightBand(opts: FightOptions = {}): void {
         const ap = attackPoint(a, h0.part ?? atk0.part, h0.tip ?? 0);
         a.x = savedX;
         a.pose = savedPose;
-        d.x = ap.x + 11 * d.scale;
+        d.x = ap.x + 7 * d.scale; // 7px：进入所有招的命中阈值(9~11px)内，又贴住躯干表面
       }
       setState(a, e.key as State);
     } else if (e.kind === 'react') {
