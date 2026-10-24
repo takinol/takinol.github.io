@@ -230,7 +230,7 @@ const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35,
 
 /** 后旋踢：以髋为轴转体一圈，后腿直摆甩出（spin 表示整体转身角度） */
 const SPIN_TUCK = P({ lean: 0.16, head: -0.02, armUB: 0.75, armLB: 1.7, armUF: 1.1, armLF: 1.6, legUB: 1.0, legLB: -1.6, legUBD: 0.15, legUF: -0.12, legLF: 0, legUFD: 0, yaw: 0 });
-const SPIN_MID = P({ lean: 0.1, head: 0.12, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: 1.0, legLB: -1.5, legUBD: 0.15, legUF: 0.1, legLF: 0, legUFD: 0, yaw: 3.14 });
+const SPIN_MID = P({ lean: 0.1, head: -1.6, armUB: 0.6, armLB: 1.5, armUF: 1.0, armLF: 1.4, legUB: 1.0, legLB: -1.5, legUBD: 0.15, legUF: 0.1, legLF: 0, legUFD: 0, yaw: 3.14 });
 const SPIN_KICK = P({ lean: -0.12, head: 0.18, armUB: -0.45, armLB: 0.8, armUF: 0.65, armLF: 0.9, legUB: -1.9, legLB: 0, legUBD: -0.25, legUF: 0.12, legLF: 0, legUFD: 0, yaw: 3.14 });
 const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.28, legLB: 0, legUBD: 0, legUF: 0.32, legLF: 0, yaw: 6.28 });
 
@@ -1111,7 +1111,8 @@ export function initFightBand(opts: FightOptions = {}): void {
       }
 
       /* --- 播放动画片段 --- */
-      f.clipT += dt;
+      // 演示模式暂停时冻结进度，让 seek() 能定格在某一帧
+      if (!(opts.demo && demoPaused)) f.clipT += dt;
       const clip = CLIPS[f.state] ?? CLIPS.idle;
       const prog = f.clipDur > 0 ? f.clipT / f.clipDur : 1;
       const targetPose = sampleClip(clip, prog);
@@ -1576,7 +1577,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     const bulk = f.build === 'warrior' ? 1.22 : 0.84;
     const yaw = f.pose.yaw || 0;
     const faceCam = -Math.sin(yaw);
-    const side = Math.cos(yaw) >= 0 ? f.facing : -f.facing;
+    // 脸画在哪一侧：由「身体朝向 × 头自己转的角度」共同决定
+    // （后旋踢背对时头回头看对手，脸要朝向对手一侧）
+    const headAng = (f.pose.lean || 0) + (f.pose.head || 0);
+    const side = Math.sin(headAng) * Math.cos(yaw) >= 0 ? f.facing : -f.facing;
     const torsoScale = 0.55 + 0.45 * Math.abs(Math.cos(yaw));
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
 
@@ -1764,6 +1768,16 @@ export function initFightBand(opts: FightOptions = {}): void {
       slow: (v?: boolean) => {
         demoSlow = v ?? !demoSlow;
         return demoSlow;
+      },
+      /** 定格到当前招式的某个进度（0~1），供逐帧检查 / 截图 */
+      seek: (frac: number) => {
+        demoPaused = true;
+        const a = fighters[0];
+        if (!a) return;
+        const clip = CLIPS[a.state] ?? CLIPS.idle;
+        const t = Math.max(0, Math.min(0.999, frac));
+        a.clipT = clip.dur * t;
+        a.pose = sampleClip(clip, t);
       },
       get idx() {
         return demoIdx;
