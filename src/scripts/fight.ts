@@ -1455,7 +1455,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     facing: number,
     camFace: number,
     gear: 'ranger' | 'warrior',
-    side: number
+    side: number,
+    torsoScale: number
   ) => {
     const pelvis = get('pelvis');
     const chest = get('chest');
@@ -1499,7 +1500,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     drawArm(backArmIsFarther ? 'B' : 'F', dark);
     drawLeg('B', dark);
 
-    torsoShape(pelvis, chest, k, body);
+    torsoShape(pelvis, chest, k * torsoScale, body);
 
     // 腰带
     const dx = chest.x - pelvis.x;
@@ -1559,42 +1560,6 @@ export function initFightBand(opts: FightOptions = {}): void {
     drawArm(backArmIsFarther ? 'F' : 'B', body);
   };
 
-  /** 后旋踢转圈阶段：整个人旋转成残影（身体+腿一起转圈，而不是腿绕圈） */
-  const drawSpinBlur = (f: Fighter) => {
-    const p = place(f).world.pelvis;
-    const h = 46 * f.scale;
-    const w = 13 * f.scale;
-
-    ctx.save();
-    ctx.globalAlpha = 0.14;
-    ctx.beginPath();
-    ctx.ellipse(f.x, groundY() + 1, 16 * f.scale, 3.4, 0, 0, TAU);
-    ctx.fillStyle = "#000";
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(f.x, p.y - h * 0.5);
-    for (let i = -2; i <= 2; i++) {
-      ctx.globalAlpha = 0.16 * (1 - Math.abs(i) / 3);
-      ctx.fillStyle = f.skin.body;
-      ctx.beginPath();
-      ctx.ellipse(i * 2.5 * f.scale, h * 0.5, w, h * 0.5, 0, 0, TAU);
-      ctx.fill();
-    }
-    ctx.strokeStyle = f.skin.dark;
-    ctx.lineWidth = 1.4 * f.scale;
-    ctx.globalAlpha = 0.35;
-    for (let k = 0; k < 5; k++) {
-      const yy = h * 0.16 + (h * 0.68 * k) / 4;
-      const ext = (k % 2) * 7 * f.scale;
-      ctx.beginPath();
-      ctx.moveTo(-w - 5 * f.scale - ext, yy);
-      ctx.lineTo(w + 5 * f.scale + ext, yy);
-      ctx.stroke();
-    }
-    ctx.restore();
-  };
 
   const drawFighter = (f: Fighter) => {
     const flashing = f.flash > 0.25;
@@ -1609,13 +1574,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     const yaw = f.pose.yaw || 0;
     const faceCam = -Math.sin(yaw);
     const side = Math.cos(yaw) >= 0 ? f.facing : -f.facing;
+    const torsoScale = 0.55 + 0.45 * Math.abs(Math.cos(yaw));
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
 
-    // 后旋踢转圈阶段：整个身体旋转成残影（不是腿绕圈）
-    if (f.state === 'spinKick' && f.clipDur > 0 && f.clipT / f.clipDur < 0.7) {
-      drawSpinBlur(f);
-      return;
-    }
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
     ctx.beginPath();
@@ -1659,11 +1620,12 @@ export function initFightBand(opts: FightOptions = {}): void {
         f.facing,
         faceCam,
         f.build,
-        side
+        side,
+        torsoScale
       );
     } else {
       const { world } = place(f);
-      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, faceCam, f.build, side);
+      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, faceCam, f.build, side, torsoScale);
     }
     ctx.restore();
     ctx.restore();
