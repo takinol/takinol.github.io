@@ -552,6 +552,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     stagger: number;
     /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
     armFront: 'B' | 'F';
+    /** 布料摆动（被击打时衣服会飘） */
+    sway: number;
     /** 体型：游侠（瘦高带剑）或战士（宽厚） */
     build: 'swordsman' | 'ranger';
     /** 无敌帧剩余时间（闪避用） */
@@ -616,6 +618,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     kb: 0,
     stagger: 0,
     armFront: 'F',
+    sway: 0,
     invuln: 0,
     minX: 20,
     maxX: 9999,
@@ -1051,6 +1054,10 @@ export function initFightBand(opts: FightOptions = {}): void {
       f.flash = Math.max(0, f.flash - dt * 4.5);
       if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
 
+      if (f.sway !== 0) {
+        f.sway *= Math.exp(-dt * 7);
+        if (Math.abs(f.sway) < 0.02) f.sway = 0;
+      }
       if (f.kb !== 0) {
 
         f.x += f.kb * dt;
@@ -1244,8 +1251,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /** 关节头：圆形覆盖，弯折处不留缺口 */
   const jointCap = (p: Pt, r: number, fill: string) => {
-    disc(p, r + 1.25, OUTLINE);
-    disc(p, r, fill);
+    // 只画同色圆盖，不再加描边，关节不外露
+    disc(p, r * 0.9, fill);
   };
 
   /** 躯干：宽肩窄腰的曲线轮廓 */
@@ -1458,7 +1465,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     camFace: number,
     gear: 'swordsman' | 'ranger',
     side: number,
-    torsoScale: number
+    torsoScale: number,
+    sway: number
   ) => {
     const pelvis = get('pelvis');
     const chest = get('chest');
@@ -1517,6 +1525,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     const bcx = pelvis.x + dx * 0.26;
     const bcy = pelvis.y + dy * 0.26;
     capsule({ x: bcx + nx * bw, y: bcy + ny * bw, z: 0 }, { x: bcx - nx * bw, y: bcy - ny * bw, z: 0 }, 2.0 * k, 2.0 * k, trim);
+    // 腰带扣
+    disc({ x: bcx, y: bcy, z: 0 }, 2.4 * k, '#C9A227');
 
     // 脖子
     const neckA: Pt = { x: chest.x + (chest.x - pelvis.x) * 0.1, y: chest.y + (chest.y - pelvis.y) * 0.1, z: 0 };
@@ -1536,7 +1546,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(hx, hy);
-      ctx.quadraticCurveTo(hx - facing * 1.5 * k, hy + 9 * k, hx + facing * 1.2 * k, hy + 15 * k);
+      ctx.quadraticCurveTo(hx - facing * 1.5 * k, hy + 9 * k, hx + facing * 1.2 * k - sway * facing * 7 * k, hy + 15 * k);
       ctx.stroke();
       // 交领袍：胸前 V 字领
       const chest2 = get('chest');
@@ -1590,7 +1600,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.fillStyle = trim;
       ctx.beginPath();
       ctx.moveTo(sB.x, sB.y - 2 * k);
-      ctx.quadraticCurveTo(sB.x - facing * 13 * k, sB.y + 9 * k, sB.x - facing * 5 * k, hB.y + 11 * k);
+      ctx.quadraticCurveTo(sB.x - facing * 13 * k, sB.y + 9 * k, sB.x - facing * 5 * k - sway * facing * 10 * k, hB.y + 11 * k);
       ctx.lineTo(sB.x + facing * 1 * k, hB.y + 5 * k);
       ctx.closePath();
       ctx.fill();
@@ -1599,7 +1609,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.beginPath();
       ctx.moveTo(neckA.x, neckA.y - 1 * k);
       ctx.lineTo(neckA.x - facing * 7 * k, neckA.y + 3 * k);
-      ctx.lineTo(neckA.x - facing * 2 * k, neckA.y + 6 * k);
+      ctx.lineTo(neckA.x - facing * 2 * k - sway * facing * 5 * k, neckA.y + 6 * k);
       ctx.closePath();
       ctx.fill();
     }
@@ -1663,11 +1673,12 @@ export function initFightBand(opts: FightOptions = {}): void {
         faceCam,
         f.build,
         side,
-        torsoScale
+        torsoScale,
+        f.sway
       );
     } else {
       const { world } = place(f);
-      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, faceCam, f.build, side, torsoScale);
+      drawFigure((key) => world[key as keyof Joints], f.scale * bulk, body, trim, dark, expr, f.facing, faceCam, f.build, side, torsoScale, f.sway);
     }
     ctx.restore();
     ctx.restore();
