@@ -36,6 +36,13 @@ const PER_PAGE = 8;
     </div>
   </section>
 
+  <!-- 小人打架：一行像素小人两两对打 -->
+  <div class="container">
+    <section class="fight-band" id="fight-band" aria-hidden="true">
+      <canvas id="fight-canvas"></canvas>
+    </section>
+  </div>
+
   <!-- 全部文章（带翻页） -->
   <div class="container">
     <div class="home-posts">
@@ -104,5 +111,370 @@ const PER_PAGE = 8;
       });
       render();
     }
+  </script>
+
+  <!-- 小人打架：Canvas 像素小人 + 对打逻辑（纯原生，无第三方库） -->
+  <script>
+    (() => {
+      const canvas = document.getElementById('fight-canvas') as HTMLCanvasElement | null;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // 配色沿用站点里的蒙德里安 / 孟菲斯色卡
+      const COLORS = ['#DD0100', '#225095', '#FAC901', '#DE0C62', '#9ACD32', '#FB923C'];
+
+      const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+      // 把十六进制颜色调亮/调暗（amt > 0 变亮，< 0 变暗）
+      const shade = (hex: string, amt: number) => {
+        const n = parseInt(hex.slice(1), 16);
+        const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+          const x = amt >= 0 ? v + (255 - v) * amt : v * (1 + amt);
+          return Math.max(0, Math.min(255, Math.round(x)));
+        });
+        return '#' + ch.map((v) => v.toString(16).padStart(2, '0')).join('');
+      };
+
+      type State = 'idle' | 'attack' | 'hurt' | 'ko';
+      interface Fighter {
+        x: number;
+        dir: number;
+        color: string;
+        hp: number;
+        maxHp: number;
+        state: State;
+        t: number;
+        clock: number;
+        phase: number;
+        lunge: number;
+        knock: number;
+        flash: number;
+        koProgress: number;
+        deadFor: number;
+        nextAttack: number;
+        didHit: boolean;
+        partner: number;
+      }
+      interface Spark {
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        life: number;
+        max: number;
+        color: string;
+      }
+
+      let W = 0;
+      let H = 0;
+      let fighters: Fighter[] = [];
+      let sparks: Spark[] = [];
+      let shake = 0;
+      let rafId = 0;
+      let last = 0;
+      let visible = true;
+
+      const groundY = () => H - 18;
+
+      const makeFighters = (count: number) => {
+        fighters = [];
+        for (let i = 0; i < count; i++) {
+          fighters.push({
+            x: 0,
+            dir: i % 2 === 0 ? 1 : -1,
+            color: COLORS[i % COLORS.length],
+            hp: 100,
+            maxHp: 100,
+            state: 'idle',
+            t: 0,
+            clock: rand(0, 10),
+            phase: rand(0, 6.28),
+            lunge: 0,
+            knock: 0,
+            flash: 0,
+            koProgress: 0,
+            deadFor: 0,
+            nextAttack: rand(0.8, 2.6),
+            didHit: false,
+            partner: i % 2 === 0 ? i + 1 : i - 1,
+          });
+        }
+        // 落单的最后一个没有对手
+        const lastIdx = count % 2 === 0 ? -1 : count - 1;
+        if (lastIdx >= 0) fighters[lastIdx].partner = -1;
+      };
+
+      // 两两分组摆位：同一对站得近，方便对打
+      const layout = () => {
+        const n = fighters.length;
+        const pairCount = Math.max(1, Math.floor(n / 2));
+        const slot = W / pairCount;
+        for (let p = 0; p < pairCount; p++) {
+          const cx = slot * (p + 0.5);
+          const gap = Math.min(84, slot * 0.42);
+          const a = fighters[p * 2];
+          const b = fighters[p * 2 + 1];
+          if (a) {
+            a.x = cx - gap / 2;
+            a.dir = 1;
+          }
+          if (b) {
+            b.x = cx + gap / 2;
+            b.dir = -1;
+          }
+        }
+        if (n % 2 === 1) {
+          const solo = fighters[n - 1];
+          solo.x = W - 40;
+          solo.dir = -1;
+        }
+      };
+
+      const spawnSpark = (x: number, y: number, color: string) => {
+        for (let i = 0; i < 6; i++) {
+          const a = rand(-Math.PI, Math.PI);
+          const sp = rand(40, 150);
+          sparks.push({
+            x,
+            y,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp - 40,
+            life: 0,
+            max: rand(0.22, 0.42),
+            color,
+          });
+        }
+      };
+
+      const update = (dt: number) => {
+        for (const f of fighters) {
+          f.clock += dt;
+          f.knock *= 0.86;
+
+          // 被击倒：躺下 → 淡出 → 复活
+          if (f.state === 'ko') {
+            f.koProgress = Math.min(1, f.koProgress + dt / 0.45);
+            f.deadFor += dt;
+            if (f.deadFor > 1.7) {
+              f.state = 'idle';
+              f.hp = f.maxHp;
+              f.koProgress = 0;
+              f.deadFor = 0;
+              f.knock = 0;
+              f.nextAttack = rand(0.9, 2.2);
+            }
+            continue;
+          }
+
+          f.t += dt;
+          f.flash = Math.max(0, f.flash - dt * 5);
+
+          if (f.state === 'attack') {
+            const k = Math.min(1, f.t / 0.3);
+            f.lunge = Math.sin(k * Math.PI) * 11;
+            // 出拳瞬间结算伤害
+            if (k > 0.45 && !f.didHit) {
+              f.didHit = true;
+              const target = fighters[f.partner];
+              if (target && target.state !== 'ko') {
+                const dmg = Math.round(rand(10, 20));
+                target.hp = Math.max(0, target.hp - dmg);
+                target.state = 'hurt';
+                target.t = 0;
+                target.flash = 1;
+                target.knock = f.dir * 7;
+                shake = 4;
+                spawnSpark(target.x + f.dir * 6, groundY() - 36, target.color);
+                if (target.hp <= 0) {
+                  target.state = 'ko';
+                  target.koProgress = 0;
+                  target.deadFor = 0;
+                  spawnSpark(target.x, groundY() - 30, '#FAC901');
+                }
+              }
+            }
+            if (k >= 1) {
+              f.state = 'idle';
+              f.t = 0;
+              f.lunge = 0;
+              f.didHit = false;
+            }
+          } else if (f.state === 'hurt') {
+            if (f.t > 0.26) {
+              f.state = 'idle';
+              f.t = 0;
+            }
+          } else {
+            // 待机：倒计时发动下一次攻击
+            f.nextAttack -= dt;
+            if (f.nextAttack <= 0) {
+              const target = fighters[f.partner];
+              if (target && target.state !== 'ko') {
+                f.state = 'attack';
+                f.t = 0;
+                f.didHit = false;
+                f.nextAttack = rand(1.1, 3.0);
+              } else {
+                f.nextAttack = rand(0.4, 0.9);
+              }
+            }
+          }
+        }
+
+        // 火花粒子
+        for (const s of sparks) {
+          s.life += dt;
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
+          s.vy += 320 * dt;
+        }
+        sparks = sparks.filter((s) => s.life < s.max);
+        shake *= 0.85;
+      };
+
+      const drawFighter = (f: Fighter) => {
+        const bob = f.state === 'idle' ? Math.sin(f.clock * 5 + f.phase) * 1.6 : 0;
+        const alpha = f.state === 'ko' ? Math.max(0, 1 - f.koProgress * 0.95) : 1;
+        const body = f.flash > 0.15 ? '#FFFFFF' : f.color;
+        const limb = shade(f.color, -0.28);
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(f.x + f.knock, groundY() + bob);
+        ctx.scale(f.dir, 1);
+        if (f.state === 'ko') ctx.rotate(-f.koProgress * Math.PI * 0.42);
+
+        // 腿
+        ctx.fillStyle = limb;
+        ctx.fillRect(-6, -15, 5, 15);
+        ctx.fillRect(1, -15, 5, 15);
+
+        // 后手
+        ctx.save();
+        ctx.translate(-4, -33);
+        ctx.rotate(0.4);
+        ctx.fillStyle = limb;
+        ctx.fillRect(-13, -2.5, 13, 5);
+        ctx.restore();
+
+        // 身体
+        ctx.fillStyle = body;
+        ctx.fillRect(-8, -38, 16, 24);
+
+        // 头
+        ctx.beginPath();
+        ctx.arc(0, -45, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = body;
+        ctx.fill();
+
+        // 眼睛（朝右）
+        ctx.fillStyle = '#111111';
+        ctx.fillRect(-1, -47, 2.6, 3.2);
+        ctx.fillRect(5, -47, 2.6, 3.2);
+
+        // 前手（攻击时挥出）
+        const swing = f.state === 'attack' ? Math.sin(Math.min(1, f.t / 0.3) * Math.PI) : 0;
+        ctx.save();
+        ctx.translate(5, -33);
+        ctx.rotate(-0.25 - swing * 1.15);
+        ctx.fillStyle = body;
+        ctx.fillRect(0, -2.5, 15, 5);
+        ctx.beginPath();
+        ctx.arc(16, 0, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.restore();
+
+        // 血条（跟着小人走，不受翻转影响）
+        if (f.state !== 'ko') {
+          const bw = 26;
+          const bx = f.x + f.knock - bw / 2;
+          const by = groundY() - 66 + bob;
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(bx, by, bw, 3.5);
+          ctx.fillStyle = f.hp > 40 ? f.color : '#DD0100';
+          ctx.fillRect(bx, by, (bw * f.hp) / f.maxHp, 3.5);
+        }
+      };
+
+      const render = () => {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const dpr = canvas.width / Math.max(1, W);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        if (shake > 0.2) {
+          ctx.translate(rand(-shake, shake) * 0.5, rand(-shake, shake) * 0.5);
+        }
+
+        // 地面线
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY() + 0.5);
+        ctx.lineTo(W, groundY() + 0.5);
+        ctx.stroke();
+
+        fighters.forEach(drawFighter);
+
+        // 火花
+        for (const s of sparks) {
+          const k = 1 - s.life / s.max;
+          ctx.globalAlpha = Math.max(0, k);
+          ctx.fillStyle = s.color;
+          ctx.fillRect(s.x - 1.5, s.y - 1.5, 3.5, 3.5);
+        }
+        ctx.globalAlpha = 1;
+      };
+
+      const loop = (ts: number) => {
+        rafId = requestAnimationFrame(loop);
+        if (!last) last = ts;
+        const dt = Math.min(0.05, (ts - last) / 1000);
+        last = ts;
+        if (!visible || reduceMotion) return;
+        update(dt);
+        render();
+      };
+
+      const resize = () => {
+        const rect = canvas.getBoundingClientRect();
+        W = Math.max(1, Math.round(rect.width));
+        H = Math.max(1, Math.round(rect.height));
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        // 窄屏 2 个、宽屏 4 个；数量变了就重建
+        const want = W < 640 ? 2 : 4;
+        if (fighters.length !== want) makeFighters(want);
+        layout();
+        render();
+      };
+
+      resize();
+      window.addEventListener('resize', () => {
+        clearTimeout((window as any).__fightResize);
+        (window as any).__fightResize = setTimeout(resize, 150);
+      });
+
+      // 滚出视口就暂停，省 CPU
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(
+          (entries) => {
+            visible = entries[0]?.isIntersecting ?? true;
+          },
+          { threshold: 0 }
+        ).observe(canvas);
+      } else {
+        visible = true;
+      }
+
+      if (!reduceMotion) rafId = requestAnimationFrame(loop);
+      window.addEventListener('pagehide', () => cancelAnimationFrame(rafId));
+    })();
   </script>
 </Base>
