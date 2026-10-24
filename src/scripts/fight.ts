@@ -495,6 +495,8 @@ export interface FightOptions {
   showNames?: boolean;
   /** 设定模式：指定左右角色（ROSTER 下标） */
   matchup?: { left: number; right: number };
+  /** 参数覆盖：侵略性 / 格挡倾向 / 血量 */
+  params?: { aggression?: number; guardChance?: number; hp?: number };
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
@@ -693,6 +695,9 @@ export function initFightBand(opts: FightOptions = {}): void {
       const f = mk(i, SKINS[0]);
       const ridx = opts.matchup ? (i % 2 === 0 ? opts.matchup.left : opts.matchup.right) : i % ROSTER.length;
       applyRoster(f, ROSTER[((ridx % ROSTER.length) + ROSTER.length) % ROSTER.length]);
+      if (opts.params?.aggression) f.aggression = opts.params.aggression;
+      if (opts.params?.guardChance) f.guardChance = opts.params.guardChance;
+      if (opts.params?.hp) { f.maxHp = opts.params.hp; f.hp = opts.params.hp; }
       fighters.push(f);
     }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
@@ -2104,7 +2109,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    const want = opts.demo ? 2 : W < 620 ? 2 : 4;
+    const want = opts.demo || opts.matchup ? 2 : W < 620 ? 2 : 4;
     if (fighters.length !== want) makeFighters(want);
     layout();
     render();
@@ -2171,6 +2176,13 @@ export function initFightBand(opts: FightOptions = {}): void {
       })),
     /** 结束外部控制，回到本地 AI */
     reset: () => setController(null),
+    /** 停止引擎（重新开打前调用） */
+    destroy: () => {
+      cancelAnimationFrame(rafId);
+      fighters = [];
+      sparks = [];
+      popups = [];
+    },
     /** 演示模式控制 */
     demo: {
       list: DEMO_LIST.map((e, i) => ({ i, key: e.key, name: e.name })),
