@@ -184,7 +184,7 @@ const IDLE_B = P({ lean: 0.09, head: -0.05, armUB: 0.26, armLB: 0.4, armUF: -0.0
 const GUARD = P({ lean: 0.15, head: -0.06, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legLB: 0, legUF: 0.34, legLF: 0.12 });
 
 /** 格挡：双臂抬高收紧 */
-const BLOCK = P({ lean: -0.05, head: 0.12, armUB: 1.35, armLB: 2.3, armUF: 1.4, armLF: 2.35, legUB: -0.34, legLB: 0, legUF: 0.36, legLF: 0.14 });
+const BLOCK = P({ lean: -0.05, head: 0.12, armUB: 1.5, armLB: 2.5, armUF: 1.55, armLF: 2.55, legUB: -0.34, legLB: 0, legUF: 0.36, legLF: 0.14 });
 
 /* ---------------- 拳法 ---------------- */
 
@@ -192,11 +192,11 @@ const JAB_WIND = P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2.0, armUF: 0.7
 const JAB_HIT = P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, armLF: 0.0, legUB: -0.42, legLB: 0, legUF: 0.5, legLF: 0.04 });
 
 const CROSS_WIND = P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUBD: -0.45, armUF: 1.0, armLF: 1.9, armUFD: 0.25, legUB: -0.18, legLB: 0, legUF: 0.26, legLF: 0, yaw: -0.32 });
-const CROSS_HIT = P({ lean: 0.44, head: 0.08, armUB: 1.6, armLB: 0.02, armUBD: -0.12, armUF: 0.42, armLF: 1.98, armUFD: 0.3, legUB: -0.52, legLB: 0, legUF: 0.58, legLF: 0, yaw: 0.22 });
+const CROSS_HIT = P({ lean: 0.32, head: 0.08, armUB: 1.72, armLB: 0.02, armUBD: -0.12, armUF: 0.42, armLF: 1.98, armUFD: 0.3, legUB: -0.52, legLB: 0, legUF: 0.58, legLF: 0, yaw: 0.34 });
 
 /** 摆拳（横拳）：手臂保持弯曲，末端走弧线 */
 const HOOK_WIND = P({ lean: -0.1, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: -0.35, armLF: 1.1, armUFD: -1.0, legUB: -0.24, legLB: 0, legUF: 0.3, legLF: 0, yaw: -0.2 });
-const HOOK_HIT = P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.45, armLF: 1.2, armUFD: 0.45, armLFD: 0.2, legUB: -0.46, legLB: 0, legUF: 0.5, legLF: 0, yaw: 0.26 });
+const HOOK_HIT = P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.62, armLF: 1.05, armUFD: 0.45, armLFD: 0.2, legUB: -0.46, legLB: 0, legUF: 0.5, legLF: 0, yaw: 0.26 });
 
 /** 上勾拳（冲天拳）：先蹲，再蹬腿上冲 */
 const UPPER_WIND = P({ lean: 0.34, head: 0.08, armUB: 0.1, armLB: 2.35, armUBD: -0.75, armUF: 0.85, armLF: 1.9, legUB: 0.4, legLB: -0.95, legUF: 0.45, legLF: -1.0, yaw: -0.15 });
@@ -220,13 +220,13 @@ const PUSH_HIT = P({ lean: -0.32, head: -0.04, armUB: 0.2, armLB: 1.1, armUF: 0.
 const SIDE_UP = P({ lean: -0.36, head: -0.05, armUB: 0.4, armLB: 1.3, armUF: 0.6, armLF: 1.2, legUB: 0.1, legLB: 0, legUF: 1.1, legLF: -1.3 });
 const SIDE_HIT = P({ lean: -0.6, head: -0.08, armUB: -0.8, armLB: 0.6, armUF: -0.95, armLF: 0.7, legUB: 0.12, legLB: 0, legUF: 1.56, legLF: 0.02 });
 
-/** 鞭腿（横扫）：腿摆到头部高度 */
-const ROUND_UP = P({ lean: -0.24, head: -0.04, armUB: 0.55, armLB: 1.4, armUF: 0.9, armLF: 1.25, legUB: 0.1, legLB: 0, legUF: 1.5, legLF: -1.0 });
-const ROUND_HIT = P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legLB: 0, legUF: 2.15, legLF: 0.05 });
+/** 鞭腿（横扫）：腿摆到头部高度，用深度外展做出「从外侧抡进来」的弧线 */
+const ROUND_UP = P({ lean: -0.24, head: -0.04, armUB: 0.55, armLB: 1.4, armUF: 0.9, armLF: 1.25, legUB: 0.1, legLB: 0, legUF: 1.5, legLF: -1.0, legUFD: -0.35 });
+const ROUND_HIT = P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legLB: 0, legUF: 1.95, legLF: 0.05, legUFD: 0.35 });
 
 /** 下劈腿（挂面腿）：抬过头 → 狠狠下砸 */
 const AXE_UP = P({ lean: -0.46, head: -0.1, armUB: 0.5, armLB: 1.2, armUF: 1.3, armLF: 0.9, legUB: 0.12, legLB: 0, legUF: 2.45, legLF: -0.15 });
-const AXE_HIT = P({ lean: 0.22, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0, legUF: 0.95, legLF: 0.05 });
+const AXE_HIT = P({ lean: 0.3, head: 0.05, armUB: 0.1, armLB: 1.0, armUF: 0.35, armLF: 1.1, legUB: 0.1, legLB: 0, legUF: 1.15, legLF: 0.05 });
 
 /**
  * 后旋踢：绕支撑脚转体一圈。
@@ -248,7 +248,7 @@ const SPIN_END = P({ lean: 0.1, head: -0.02, armUB: 1.0, armLB: 1.9, armUF: 1.08
 
 /** 腾空飞踢：跳起来前冲踢 */
 const FLY_CROUCH = P({ lean: 0.34, head: -0.1, armUB: -0.6, armLB: 0.8, armUF: -0.7, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
-const FLY_AIR = P({ lean: 0.16, head: 0.06, armUB: 0.9, armLB: 1.1, armUF: 1.1, armLF: 1.0, legUB: -0.2, legLB: 0, legUF: 1.52, legLF: 0, lift: 34 });
+const FLY_AIR = P({ lean: -0.08, head: 0.06, armUB: 0.9, armLB: 1.1, armUF: 1.1, armLF: 1.0, legUB: -0.2, legLB: 0, legUF: 1.52, legLF: 0, lift: 22 });
 const FLY_LAND = P({ lean: 0.4, head: -0.14, armUB: -0.5, armLB: 0.95, armUF: -0.6, armLF: 1.0, legUB: 0.62, legLB: -1.3, legUF: 0.5, legLF: -1.4 });
 
 /** 双飞脚：腾空剪腿，两脚先后各一击 */
@@ -265,7 +265,7 @@ const HURT_HEAVY = P({ lean: 0.45, head: 0.5, armUB: 0.35, armLB: 1.6, armUF: 0.
 const HURT_UP = P({ lean: -0.42, head: -0.85, armUB: -0.7, armLB: 1.1, armUF: -0.9, armLF: 1.2, legUB: -0.3, legLB: 0, legUF: 0.34, legLF: 0.16 });
 
 const JUMP_CROUCH = P({ lean: 0.34, head: -0.12, armUB: -0.65, armLB: 0.8, armUF: -0.75, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 });
-const JUMP_AIR = P({ lean: 0.1, head: 0.08, armUB: 1.6, armLB: 0.3, armUF: 1.75, armLF: 0.25, legUB: 0.8, legLB: -1.3, legUF: 0.95, legLF: -1.45, lift: 30 });
+const JUMP_AIR = P({ lean: 0.1, head: 0.08, armUB: 1.05, armLB: 1.5, armUF: 1.2, armLF: 1.45, legUB: 0.8, legLB: -1.3, legUF: 0.95, legLF: -1.45, lift: 30 });
 const JUMP_LAND = P({ lean: 0.4, head: -0.14, armUB: -0.55, armLB: 0.95, armUF: -0.65, armLF: 1.05, legUB: 0.7, legLB: -1.45, legUF: 0.64, legLF: -1.6 });
 
 /** 踉跄：重心后倒，手臂张开保持平衡，一只脚向后撤 */
@@ -348,7 +348,7 @@ const ATTACKS: Record<string, Atk> = {
   axeKick: { part: 'footF', hits: [{ at: 0.58, dmg: [17, 26], reach: 1.2, knock: 240 }], hitstop: 0.075, react: 'heavy' },
   // 命中时刻对齐「身体转满半圈、腿扫到位」那一帧；转身的同时向前突进才够得着
   spinKick: { part: 'footB', hits: [{ at: 0.5, dmg: [22, 33], reach: 1.4, knock: 500 }], hitstop: 0.16, react: 'heavy', far: true, forward: 110 },
-  flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 150, far: true },
+  flyKick: { part: 'footF', hits: [{ at: 0.48, dmg: [18, 27], reach: 1.3, knock: 380 }], hitstop: 0.08, react: 'heavy', forward: 120, far: true },
   scissorKick: {
     part: 'footF',
     hits: [
@@ -489,6 +489,12 @@ export interface FightOptions {
   demo?: boolean;
   /** 调试/截图用：无视口可见性门控，始终渲染 */
   forceVisible?: boolean;
+  /** 无限模式：倒地后换下一个随机挑战者（默认开） */
+  endless?: boolean;
+  /** 持续显示姓名牌（设定模式用） */
+  showNames?: boolean;
+  /** 设定模式：指定左右角色（ROSTER 下标） */
+  matchup?: { left: number; right: number };
 }
 
 export function initFightBand(opts: FightOptions = {}): void {
@@ -506,6 +512,26 @@ export function initFightBand(opts: FightOptions = {}): void {
     { body: '#7CB518', trim: '#F1FFE0', dark: '#4C720C' },
     { body: '#FB923C', trim: '#2A1500', dark: '#B4631B' },
   ];
+
+  /** 五人角色表：姓名 / 体型 / 配色 / 性格 */
+  const ROSTER = [
+    { name: '疾风剑客', build: 'swordsman' as const, skin: 1, aggression: 0.85, guardChance: 0.4, preferDist: 30 },
+    { name: '林影游侠', build: 'ranger' as const, skin: 4, aggression: 0.6, guardChance: 0.35, preferDist: 33 },
+    { name: '赤焰武人', build: 'swordsman' as const, skin: 0, aggression: 1.0, guardChance: 0.5, preferDist: 27 },
+    { name: '夜刃刺客', build: 'ranger' as const, skin: 3, aggression: 0.9, guardChance: 0.3, preferDist: 29 },
+    { name: '飞花剑姬', build: 'swordsman' as const, skin: 5, aggression: 0.7, guardChance: 0.55, preferDist: 31 },
+  ];
+
+  /** 把角色表里的设定套到一个斗士身上，并触发登场 */
+  const applyRoster = (f: Fighter, r: (typeof ROSTER)[number]) => {
+    f.name = r.name;
+    f.build = r.build;
+    f.skin = SKINS[r.skin];
+    f.aggression = r.aggression;
+    f.guardChance = r.guardChance;
+    f.preferDist = r.preferDist;
+    f.enterT = f.enterDur;
+  };
 
   type State =
     | 'idle'
@@ -564,6 +590,11 @@ export function initFightBand(opts: FightOptions = {}): void {
     /** 当前连招步骤（null=不在连招中） */
     comboSteps: string[] | null;
     comboIndex: number;
+    /** 角色姓名 */
+    name: string;
+    /** 登场动画剩余时间 */
+    enterT: number;
+    enterDur: number;
     downTimer: number;
     ragdoll: Record<string, Pt & { px: number; py: number }> | null;
     links: { a: string; b: string; len: number }[];
@@ -638,6 +669,9 @@ export function initFightBand(opts: FightOptions = {}): void {
     comboTimer: 0,
     comboSteps: null,
     comboIndex: 0,
+    name: '',
+    enterT: 0,
+    enterDur: 1.0,
     downTimer: 0,
     ragdoll: null,
     links: [],
@@ -655,8 +689,12 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   const makeFighters = (count: number) => {
     fighters = [];
-    const pool = [...SKINS].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < count; i++) fighters.push(mk(i, pool[i % pool.length]));
+    for (let i = 0; i < count; i++) {
+      const f = mk(i, SKINS[0]);
+      const ridx = opts.matchup ? (i % 2 === 0 ? opts.matchup.left : opts.matchup.right) : i % ROSTER.length;
+      applyRoster(f, ROSTER[((ridx % ROSTER.length) + ROSTER.length) % ROSTER.length]);
+      fighters.push(f);
+    }
     if (count % 2 !== 0) fighters[count - 1].partner = -1;
   };
 
@@ -1144,6 +1182,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
 
       if (f.counterWindow > 0) f.counterWindow -= dt;
+      if (f.enterT > 0) f.enterT = Math.max(0, f.enterT - dt);
       if (f.comboTimer > 0) f.comboTimer -= dt;
       if (f.comboTimer <= 0) { f.comboSteps = null; f.comboIndex = 0; }
       if (f.sway !== 0) {
@@ -1167,12 +1206,28 @@ export function initFightBand(opts: FightOptions = {}): void {
         f.downTimer += dt;
         stepRagdoll(f, dt);
         if (f.downTimer > 1.3) {
-          // 起身：从倒地位置切到跪姿再站起
-          f.ragdoll = null;
-          f.hp = f.maxHp;
-          f.getupFade = 0;
-          setState(f, 'getup');
-          f.cool = rand(0.5, 1.0);
+          if (opts.endless !== false) {
+            // 无限模式：倒地后换下一个随机挑战者（登场动画 + 姓名）
+            f.ragdoll = null;
+            f.hp = f.maxHp;
+            f.getupFade = 0;
+            f.state = 
+'idle'
+;
+            f.pose = { ...GUARD };
+            f.clipT = 0;
+            f.clipDur = CLIPS.idle.dur;
+            f.cool = rand(0.6, 1.4);
+            f.stagger = 0;
+            applyRoster(f, ROSTER[Math.floor(Math.random() * ROSTER.length)]);
+          } else {
+            // 起身：从倒地位置切到跪姿再站起
+            f.ragdoll = null;
+            f.hp = f.maxHp;
+            f.getupFade = 0;
+            setState(f, 'getup');
+            f.cool = rand(0.5, 1.0);
+          }
         }
         continue;
       }
@@ -1901,6 +1956,8 @@ export function initFightBand(opts: FightOptions = {}): void {
     const side = Math.sin(headAng) * Math.cos(yaw) >= 0 ? f.facing : -f.facing;
     const torsoScale = 0.55 + 0.45 * Math.abs(Math.cos(yaw));
     const sh = Math.max(0.4, 1 - f.pose.lift / 40);
+    // 登场动画：从上方落下（quadratic 快落）
+    const enterDrop = f.enterT > 0 ? -70 * f.scale * Math.pow(f.enterT / f.enterDur, 2) : 0;
 
     ctx.save();
     ctx.globalAlpha = 0.14 * sh;
@@ -1923,6 +1980,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     const alpha = f.state === 'getup' ? Math.max(0.02, f.getupFade) : 1;
     ctx.save();
     ctx.globalAlpha = alpha;
+    if (f.enterT > 0) ctx.translate(0, enterDrop);
 
     if (f.state === 'down' && f.ragdoll) {
       const rd = f.ragdoll;
@@ -1946,6 +2004,28 @@ export function initFightBand(opts: FightOptions = {}): void {
     }
     ctx.restore();
     ctx.restore();
+
+    // 姓名牌：登场时大号显示，之后（设定模式）持续小号
+    if (f.enterT > 0 || opts.showNames) {
+      const ny = groundY() - 52 * f.scale + (f.enterT > 0 ? enterDrop : 0);
+      const big = f.enterT > 0;
+      const na = big ? Math.min(1, 1.2 - f.enterT / f.enterDur) : 0.85;
+      ctx.save();
+      ctx.globalAlpha = na;
+      ctx.font = `bold ${(big ? 13 : 10) * f.scale}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 
+'center'
+;
+      ctx.textBaseline = 
+'middle'
+;
+      const tw = ctx.measureText(f.name).width;
+      ctx.fillStyle = 'rgba(20,16,12,0.72)';
+      ctx.fillRect(f.x - tw / 2 - 6, ny - (big ? 9 : 7), tw + 12, big ? 18 : 14);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(f.name, f.x, ny);
+      ctx.restore();
+    }
 
     if (f.state !== 'down') {
       const w = 26;
