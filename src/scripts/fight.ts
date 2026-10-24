@@ -1484,15 +1484,35 @@ export function initFightBand(opts: FightOptions = {}): void {
     const zLegF = (get('kneeF').z || 0) + (get('footF').z || 0);
     const backLegIsFarther = zLegB <= zLegF;
 
+    // 护具绑带：垂直于肢体方向画一条圆头粗线（护肘/护腕/护膝/靴口通用）
+    const pad = (p: Pt, ang: number, w: number, lw: number, color: string) => {
+      const px = Math.cos(ang + Math.PI / 2);
+      const py = Math.sin(ang + Math.PI / 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p.x - px * w, p.y - py * w);
+      ctx.lineTo(p.x + px * w, p.y + py * w);
+      ctx.stroke();
+    };
+
     const drawArm = (which: 'B' | 'F', base: string) => {
       const s = get(which === 'B' ? 'shoulderB' : 'shoulderF');
       const e = get(which === 'B' ? 'elbowB' : 'elbowF');
       const h = get(which === 'B' ? 'handB' : 'handF');
       ctx.save();
       ctx.globalAlpha *= depthAlpha(((e.z || 0) + (h.z || 0)) / 2);
-      limb(s, e, 4.5 * k, 3.7 * k, base);
-      jointCap(e, 3.7 * k, base);
-      limb(e, h, 3.5 * k, 3.0 * k, base);
+      // 上臂衣袖
+      limb(s, e, 4.6 * k, 3.8 * k, base);
+      // 肘部护甲（盖住关节）
+      const angElbow = Math.atan2(e.y - s.y, e.x - s.x);
+      pad(e, angElbow, 4.3 * k, 3.4 * k, trim);
+      // 前臂
+      limb(e, h, 3.6 * k, 3.0 * k, base);
+      // 皮质护腕
+      const angWrist = Math.atan2(h.y - e.y, h.x - e.x);
+      pad({ x: h.x - Math.cos(angWrist) * 2.4 * k, y: h.y - Math.sin(angWrist) * 2.4 * k, z: 0 }, angWrist, 2.3 * k, 2.6 * k, trim);
       hand(h, k, base, facing);
       ctx.restore();
     };
@@ -1503,9 +1523,16 @@ export function initFightBand(opts: FightOptions = {}): void {
       const foot = get(which === 'B' ? 'footB' : 'footF');
       ctx.save();
       ctx.globalAlpha *= depthAlpha(((knee.z || 0) + (foot.z || 0)) / 2);
+      // 大腿（裤管）
       limb(hip, knee, (which === 'B' ? 5.0 : 5.6) * k, (which === 'B' ? 4.0 : 4.5) * k, base);
-      jointCap(knee, (which === 'B' ? 4.0 : 4.5) * k, base);
+      // 皮质护膝（盖住关节）
+      const angKnee = Math.atan2(knee.y - hip.y, knee.x - hip.x);
+      pad(knee, angKnee, 4.6 * k, 3.4 * k, trim);
+      // 小腿
       limb(knee, foot, (which === 'B' ? 3.8 : 4.2) * k, 3.2 * k, base);
+      // 靴口翻边
+      const angAnkle = Math.atan2(foot.y - knee.y, foot.x - knee.x);
+      pad({ x: foot.x, y: foot.y - 1.6 * k, z: 0 }, angAnkle, 3.4 * k, 3.0 * k, trim);
       shoe(foot, facing, k, base);
       ctx.restore();
     };
@@ -1534,13 +1561,17 @@ export function initFightBand(opts: FightOptions = {}): void {
 
     headShape(head, k, body, trim, expr, side, camFace);
 
-    // 装备与发型：剑客（发髻+马尾+交领袍+背剑）/ 游侠（兜帽+斗篷+围巾）
+    // 装备与发型：剑客（护额/束发/单护肩/交叉皮带/交领/背剑/腰带尾）
+    //              游侠（破损兜帽/羽毛/眼罩/凌乱短发/破边斗篷/箭袋/短弓/腰包）
     if (gear === 'swordsman') {
+      // 额前护额（一条横带）
+      pad({ x: head.x, y: head.y - L.headR * 0.32 * k, z: 0 }, 0, L.headR * 1.0 * k, 2.6 * k, trim);
       // 发髻（头顶小圆髻）
       disc({ x: head.x, y: head.y - (L.headR + 1.4) * k, z: 0 }, 2.6 * k, trim);
-      // 马尾（从后脑垂下一束）
+      // 低马尾 + 束发绳结（绳结在发根）
       const hx = head.x - facing * L.headR * 0.6 * k;
       const hy = head.y + L.headR * 0.7 * k;
+      disc({ x: hx, y: hy, z: 0 }, 1.7 * k, '#C9A227');
       ctx.strokeStyle = trim;
       ctx.lineWidth = 3.4 * k;
       ctx.lineCap = 'round';
@@ -1548,16 +1579,39 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.moveTo(hx, hy);
       ctx.quadraticCurveTo(hx - facing * 1.5 * k, hy + 9 * k, hx + facing * 1.2 * k - sway * facing * 7 * k, hy + 15 * k);
       ctx.stroke();
-      // 交领袍：胸前 V 字领
+      // 层叠衣领（内层 + 外层 V 领）
       const chest2 = get('chest');
-      ctx.strokeStyle = trim;
-      ctx.lineWidth = 1.8 * k;
+      ctx.strokeStyle = '#8B5E3C';
+      ctx.lineWidth = 3.0 * k;
       ctx.beginPath();
-      ctx.moveTo(head.x, head.y + L.headR * 0.65 * k);
+      ctx.moveTo(head.x, head.y + L.headR * 0.55 * k);
       ctx.lineTo(chest2.x - facing * 4 * k, chest2.y + 5 * k);
-      ctx.moveTo(head.x, head.y + L.headR * 0.65 * k);
+      ctx.moveTo(head.x, head.y + L.headR * 0.55 * k);
       ctx.lineTo(chest2.x + facing * 4 * k, chest2.y + 5 * k);
       ctx.stroke();
+      ctx.strokeStyle = trim;
+      ctx.lineWidth = 1.6 * k;
+      ctx.beginPath();
+      ctx.moveTo(head.x, head.y + L.headR * 0.75 * k);
+      ctx.lineTo(chest2.x - facing * 3.2 * k, chest2.y + 6 * k);
+      ctx.moveTo(head.x, head.y + L.headR * 0.75 * k);
+      ctx.lineTo(chest2.x + facing * 3.2 * k, chest2.y + 6 * k);
+      ctx.stroke();
+      // 胸前交叉皮带（两条斜带）
+      const shF = get('shoulderF');
+      const hipB2 = get('hipB');
+      const hipF2 = get('hipF');
+      ctx.strokeStyle = '#8B5E3C';
+      ctx.lineWidth = 2.6 * k;
+      ctx.beginPath();
+      ctx.moveTo(shF.x, shF.y);
+      ctx.lineTo(hipB2.x, hipB2.y + 2 * k);
+      ctx.moveTo(get('shoulderB').x, get('shoulderB').y);
+      ctx.lineTo(hipF2.x, hipF2.y + 2 * k);
+      ctx.stroke();
+      // 单护肩（近侧肩部一块圆护甲）
+      disc(shF, 5.0 * k, '#8B5E3C');
+      disc(shF, 3.6 * k, trim);
       // 背剑：剑鞘斜背身后 + 剑柄从肩上伸出 + 剑格
       const sB = get('shoulderB');
       const hB = get('hipB');
@@ -1566,44 +1620,119 @@ export function initFightBand(opts: FightOptions = {}): void {
       const lg = Math.hypot(dxg, dyg) || 1;
       const ux = dxg / lg;
       const uy = dyg / lg;
-      // 剑鞘
       ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = 4.4 * k;
       ctx.beginPath();
       ctx.moveTo(sB.x - ux * 2, sB.y - uy * 2);
       ctx.lineTo(hB.x + ux * 1.5, hB.y + uy * 1.5);
       ctx.stroke();
-      // 剑柄
       ctx.strokeStyle = trim;
       ctx.lineWidth = 2.8 * k;
       ctx.beginPath();
       ctx.moveTo(sB.x, sB.y);
       ctx.lineTo(sB.x + ux * 7 * k, sB.y + uy * 7 * k);
       ctx.stroke();
-      // 剑格（护手横档）
       ctx.lineWidth = 2.4 * k;
       ctx.beginPath();
       ctx.moveTo(sB.x + ux * 5.5 * k - uy * 3.2 * k, sB.y + uy * 5.5 * k + ux * 3.2 * k);
       ctx.lineTo(sB.x + ux * 5.5 * k + uy * 3.2 * k, sB.y + uy * 5.5 * k - ux * 3.2 * k);
       ctx.stroke();
+      // 腰带尾（从腰带垂下，击打时飘动）
+      ctx.fillStyle = '#8B5E3C';
+      ctx.beginPath();
+      ctx.moveTo(bcx, bcy);
+      ctx.lineTo(bcx - facing * 3 * k - sway * facing * 8 * k, bcy + 9 * k);
+      ctx.lineTo(bcx + facing * 1 * k - sway * facing * 6 * k, bcy + 8 * k);
+      ctx.closePath();
+      ctx.fill();
     } else {
-      // 游侠：兜帽（盖住头顶的弧形）
+      // 游侠：破损兜帽（弧形帽檐 + 一处豁口）
       ctx.strokeStyle = trim;
       ctx.lineWidth = 4 * k;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.ellipse(head.x, head.y - L.headR * 0.1 * k, L.headR * 1.12 * k, L.headR * 1.0 * k, 0, Math.PI, Math.PI * 2);
       ctx.stroke();
-      // 斗篷（从肩向后飘）
+      // 凌乱短发（兜帽下几撮）
+      ctx.lineWidth = 1.8 * k;
+      ctx.beginPath();
+      ctx.moveTo(head.x - facing * L.headR * 0.4 * k, head.y + L.headR * 0.3 * k);
+      ctx.lineTo(head.x - facing * L.headR * 0.7 * k, head.y + L.headR * 0.75 * k);
+      ctx.moveTo(head.x - facing * L.headR * 0.1 * k, head.y + L.headR * 0.35 * k);
+      ctx.lineTo(head.x - facing * L.headR * 0.3 * k, head.y + L.headR * 0.85 * k);
+      ctx.stroke();
+      // 羽毛头饰（插在兜帽侧）
+      ctx.strokeStyle = '#C9A227';
+      ctx.lineWidth = 1.6 * k;
+      ctx.beginPath();
+      ctx.moveTo(head.x - facing * L.headR * 0.9 * k, head.y - L.headR * 0.8 * k);
+      ctx.quadraticCurveTo(head.x - facing * L.headR * 1.6 * k, head.y - L.headR * 0.4 * k, head.x - facing * L.headR * 1.9 * k - sway * facing * 3 * k, head.y + L.headR * 0.2 * k);
+      ctx.stroke();
+      // 单眼眼罩（斜带 + 盖住一只眼）
+      const eyePatchX = head.x + side * L.headR * 0.46 * k;
+      const eyePatchY = head.y + L.headR * 0.02 * k;
+      ctx.strokeStyle = '#3A2E00';
+      ctx.lineWidth = 2.0 * k;
+      ctx.beginPath();
+      ctx.moveTo(eyePatchX - side * L.headR * 0.8 * k, eyePatchY - L.headR * 0.5 * k);
+      ctx.lineTo(eyePatchX + side * L.headR * 0.6 * k, eyePatchY + L.headR * 0.5 * k);
+      ctx.stroke();
+      ctx.fillStyle = '#3A2E00';
+      ctx.beginPath();
+      ctx.ellipse(eyePatchX, eyePatchY, L.headR * 0.28 * k, L.headR * 0.22 * k, 0, 0, TAU);
+      ctx.fill();
+      // 破边斗篷（从肩向后飘，下摆几处豁口）
       const sB = get('shoulderB');
       const hB = get('hipB');
       ctx.fillStyle = trim;
       ctx.beginPath();
       ctx.moveTo(sB.x, sB.y - 2 * k);
       ctx.quadraticCurveTo(sB.x - facing * 13 * k, sB.y + 9 * k, sB.x - facing * 5 * k - sway * facing * 10 * k, hB.y + 11 * k);
+      ctx.lineTo(sB.x - facing * 2 * k - sway * facing * 8 * k, hB.y + 9 * k);
+      ctx.lineTo(sB.x - facing * 1 * k - sway * facing * 7 * k, hB.y + 11 * k);
       ctx.lineTo(sB.x + facing * 1 * k, hB.y + 5 * k);
       ctx.closePath();
       ctx.fill();
+      // 斜挎箭袋 + 羽毛箭
+      const shF = get('shoulderF');
+      const hipB2 = get('hipB');
+      ctx.strokeStyle = '#8B5E3C';
+      ctx.lineWidth = 3.0 * k;
+      ctx.beginPath();
+      ctx.moveTo(shF.x, shF.y);
+      ctx.lineTo(hipB2.x, hipB2.y + 2 * k);
+      ctx.stroke();
+      // 箭袋（腰后小袋）
+      ctx.fillStyle = '#8B5E3C';
+      ctx.beginPath();
+      ctx.ellipse(hipB2.x, hipB2.y + 2 * k, 3.0 * k, 5.5 * k, 0.3, 0, TAU);
+      ctx.fill();
+      // 三支羽毛箭（箭羽露出）
+      for (let ai = 0; ai < 3; ai++) {
+        const ax = hipB2.x + (ai - 1) * 2.0 * k;
+        const ay = hipB2.y - 2 * k - sway * ai * 1.5 * k;
+        ctx.strokeStyle = '#C9A227';
+        ctx.lineWidth = 1.4 * k;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax, ay - 6 * k);
+        ctx.stroke();
+      }
+      // 短弓（背在身后：弓臂 + 弦）
+      const bowTop = { x: sB.x + facing * 2 * k, y: sB.y - 6 * k };
+      const bowBot = { x: sB.x - facing * 2 * k, y: hB.y + 8 * k };
+      ctx.strokeStyle = '#8B5E3C';
+      ctx.lineWidth = 2.6 * k;
+      ctx.beginPath();
+      ctx.moveTo(bowTop.x, bowTop.y);
+      ctx.quadraticCurveTo(sB.x - facing * 10 * k, (bowTop.y + bowBot.y) / 2, bowBot.x, bowBot.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#E8EEF7';
+      ctx.lineWidth = 1.0 * k;
+      ctx.beginPath();
+      ctx.moveTo(bowTop.x, bowTop.y);
+      ctx.lineTo(bowBot.x, bowBot.y);
+      ctx.stroke();
       // 围巾
       ctx.fillStyle = trim;
       ctx.beginPath();
@@ -1612,8 +1741,12 @@ export function initFightBand(opts: FightOptions = {}): void {
       ctx.lineTo(neckA.x - facing * 2 * k - sway * facing * 5 * k, neckA.y + 6 * k);
       ctx.closePath();
       ctx.fill();
+      // 腰包
+      ctx.fillStyle = '#8B5E3C';
+      ctx.beginPath();
+      ctx.ellipse(bcx + facing * 3 * k, bcy + 2 * k, 3.0 * k, 2.6 * k, 0, 0, TAU);
+      ctx.fill();
     }
-
     drawLeg(backLegIsFarther ? 'F' : 'B', body);
     drawArm(backArmIsFarther ? 'F' : 'B', body);
   };
