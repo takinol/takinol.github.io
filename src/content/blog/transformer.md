@@ -1,6 +1,7 @@
 ---
 title: "transformer"
 date: 2026-10-24
+des
 ---
 
 >因为要做 **assignment** 时需要借助 **transformer** 的框架来做图生文，因此借助一些知乎和 3Blue1Brown 以及一些小红书的帖子学习了该框架
