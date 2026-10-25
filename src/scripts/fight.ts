@@ -519,7 +519,7 @@ interface IKResult {
  * @param bendDir 弯曲方向偏好（正=向外弯，负=向内弯，0=取较短路径）
  * @returns IK 求解结果
  */
-const twoBoneIK = (
+export const twoBoneIK = (
   root: Pt,
   target: Pt,
   len1: number,
@@ -559,6 +559,30 @@ const twoBoneIK = (
   const angle2 = Math.PI - elbowAngle; // 内角
 
   return { angle1, angle2, reachable: true };
+};
+
+/**
+ * 落地脚的两杆 IK —— fk 的 dir 角度系版（place() 的 Foot-IK 用这个，别直接调 twoBoneIK）。
+ *
+ * 背景（2026-10-25 步态审查修的 bug）：twoBoneIK 返回 atan2 系角度（0=+x 轴），
+ * 而 fk 的 legU/legL 是 dir 系（0=正下方，正=向前）——之前把 atan2 角直接塞进
+ * dir 字段，差了 π/2，下蹲/受击时大腿朝上翘、脚离目标 22px，视觉就是"反关节"。
+ * bendDir=-1：膝朝角色前方弯（人类膝盖只向前弯；+1 会解出膝在身后的鸟腿）。
+ */
+export const solveFootIK = (
+  hip: Pt,
+  foot: Pt,
+  len1: number,
+  len2: number,
+): { u: number; f: number; ok: boolean } => {
+  const ik = twoBoneIK(hip, foot, len1, len2, -1);
+  // atan2 系 → dir 系：dir 角 a 满足 (sin a, cos a) = (cos a₂, sin a₂)，即 a = π/2 − a₂
+  const u = Math.PI / 2 - ik.angle1;
+  // 小腿：从膝盖直接指向目标（长度已由 IK 保证可达），绝对方向反解出相对角 f
+  const kx = hip.x + Math.sin(u) * len1;
+  const ky = hip.y + Math.cos(u) * len1;
+  const f = Math.atan2(foot.x - kx, foot.y - ky) - u;
+  return { u, f, ok: ik.reachable };
 };
 
 /**
@@ -1321,10 +1345,20 @@ const sampleClip = (clip: Clip, t: number): Pose => {
   return keys[keys.length - 1].pose;
 };
 
-/** 走路：用相位生成真实的迈步（前后腿反相摆动） */
-const walkPose = (phase: number, speed = 1): Pose => {
+/**
+ * 走路：用相位生成真实的迈步（前后腿反相摆动）。导出供步态几何自检/工具用。
+ *
+ * 膝关节生理约束（2026-10-25 步态审查修的 bug）：小腿相对大腿的角**只能 ≤ 0**
+ * （脚跟朝后收）。旧实现 legLF = 0.25 + max(0,c)·0.75 恒为正 = 小腿一直朝前甩
+ * = 全程反关节，这就是「走路像踢腿」的根源；后撤的 speed 负号又只翻大腿不翻
+ * 小腿相位，相位脱节后更是彻底变成"向前踢"。现在：摆动期（大腿向前扫）屈膝
+ * 最深（脚跟提起清理地面），触地/支撑期接近伸直 —— 与真实步态同相。
+ */
+export const walkPose = (phase: number, speed = 1): Pose => {
   const s = Math.sin(phase * TAU);
   const c = Math.cos(phase * TAU);
+  // 屈曲量：swing>0（该腿正在向前摆）屈得深，支撑期只剩 0.18 的自然微屈
+  const knee = (swing: number) => -(0.18 + 0.92 * Math.max(0, swing));
   return P({
     lean: 0.12 + Math.abs(s) * 0.04,
     head: -0.04,
@@ -1333,9 +1367,9 @@ const walkPose = (phase: number, speed = 1): Pose => {
     armUF: 0.9 + s * 0.35 * speed,
     armLF: 1.5,
     legUB: -s * 0.62 * speed,
-    legLB: 0.25 + Math.max(0, -c) * 0.75,
+    legLB: knee(-c),   // B 腿与 F 腿反相：F 向前扫时（c>0）B 正在支撑
     legUF: s * 0.62 * speed,
-    legLF: 0.25 + Math.max(0, c) * 0.75,
+    legLF: knee(c),
   });
 };
 
@@ -3188,24 +3222,24 @@ export function initFightBand(opts: FightOptions = {}): void {
       // 找到位置更低的脚（支撑脚），计算它离地面的距离
       const supportFoot = jRaw.footF.y >= jRaw.footB.y ? 'footF' : 'footB';
       const supportHip = supportFoot === 'footF' ? 'hipF' : 'hipB';
-      const supportKnee = supportFoot === 'footF' ? 'kneeF' : 'kneeB';
       // 目标：脚应该在地面高度（y = groundY() - lift 偏移）
       // IK 在局部坐标空间工作，地面相对于骨盆的位置
-      const groundLocalY = 0; // 简化：假设地面在骨盆下方约 thigh + shin 的距离处
       const hip = jRaw[supportHip as keyof Joints];
       const footTarget: Pt = { x: jRaw[supportFoot as keyof Joints].x, y: Math.max(jRaw[supportFoot as keyof Joints].y, hip.y + L.thigh + L.shin - 1), z: 0 };
       // 只有当脚明显低于自然伸展位置时才应用 IK
       if (footTarget.y > jRaw[supportFoot as keyof Joints].y + 0.5) {
-        const ik = twoBoneIK(hip, footTarget, L.thigh, L.shin, 1);
-        if (ik.reachable) {
+        // solveFootIK 输出的就是 fk 的 dir 系角度（u=大腿、f=小腿相对角），
+        // 并保证膝朝角色前方弯 —— 别再直接用 twoBoneIK 的 atan2 角（差 π/2）
+        const ik = solveFootIK(hip, footTarget, L.thigh, L.shin);
+        if (ik.ok) {
           // 创建姿态副本，修改对应腿的角度
           const modPose = { ...pose };
           if (supportFoot === 'footF') {
-            modPose.legUF = ik.angle1;
-            modPose.legLF = ik.angle2 - Math.PI; // 转换为相对角度
+            modPose.legUF = ik.u;
+            modPose.legLF = ik.f;
           } else {
-            modPose.legUB = ik.angle1;
-            modPose.legLB = ik.angle2 - Math.PI;
+            modPose.legUB = ik.u;
+            modPose.legLB = ik.f;
           }
           pose = modPose;
         }
@@ -5530,10 +5564,13 @@ export function initFightBand(opts: FightOptions = {}): void {
           f.walkPhase += dt * 1.9;
           f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
         } else if (f.state === 'retreat' && f.clipT < f.clipDur) {
-          // 后撤是短暂的规避动作：要撤得干脆，一脚退出对手射程
+          // 后撤是短暂的规避动作：要撤得干脆，一脚退出对手射程。
+          // 后撤步 = 步态周期**倒放**（相位递减）：脚先向后伸、再向后蹬 —— 大腿
+          // 和小腿的相位天然同步。旧的 speed=-0.85 只翻转大腿摆动、小腿屈曲
+          // 相位不跟着翻，两段脱节，看起来就是"身体后退、腿朝前踢"。
           f.x -= f.facing * 54 * dt;
-          f.walkPhase += dt * 1.6;
-          f.pose = lerpPose(f.pose, walkPose(f.walkPhase, -0.85), 1 - Math.exp(-dt * 22));
+          f.walkPhase -= dt * 1.6;
+          f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
         } else {
           setState(f, 'idle');
           f.cool = Math.max(f.cool, rand(0.12, 0.45));
