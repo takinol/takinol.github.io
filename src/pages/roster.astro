@@ -26,7 +26,7 @@ const SLOTS = Array.from({ length: 15 }, (_, i) => i);
     <div class="roster-grid">
       {
         SLOTS.map((i) => (
-          <a class="roster-card" href={`/arena?l=${i}`} data-who={i}>
+          <a class="roster-card" href={`/fight?mode=arena&l=${i}`} data-who={i}>
             <iframe
               src={`/pose?who=${i}&move=idle&frac=0.5&noHud=1`}
               loading="lazy"

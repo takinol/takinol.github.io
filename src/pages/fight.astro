@@ -1,0 +1,662 @@
+---
+// 格斗工具统一页：单招演示 / 竞技场对打 / 角色图鉴入口，全部在这一个页面里切换。
+// （以前是 /fight-demo + /arena + /roster + /pose 四个页面互相跳，入口散在顶栏）
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="演示" description="单招演示 · 竞技场对打 · 角色图鉴">
+  <div class="container fight-page">
+    <header class="page-head">
+      <h1>演示</h1>
+      <p>单招逐个演示、竞技场对打、角色图鉴 —— 都在这一页切换。</p>
+    </header>
+
+    <div class="fight-tabs">
+      <button type="button" data-mode="demo" class="on">单招演示</button>
+      <button type="button" data-mode="arena">竞技场</button>
+      <a class="fight-link" href="/roster">角色图鉴 →</a>
+    </div>
+
+    <section class="fight-stage">
+      <canvas id="fight-canvas"></canvas>
+    </section>
+
+    <!-- ── 单招演示控制条 ── -->
+    <div class="fight-bar" id="bar-demo" hidden>
+      <label class="fld">角色
+        <select id="demo-who"></select>
+      </label>
+      <button id="d-prev" type="button">← 上一个</button>
+      <button id="d-next" type="button">下一个 →</button>
+      <button id="d-pause" type="button">⏸ 暂停</button>
+      <button id="d-slow" type="button">🐢 慢放</button>
+      <button id="d-auto" type="button">🔁 轮播：关</button>
+      <button id="d-geo" type="button">🎯 判定盒：关</button>
+      <span class="hint">← → 切换 · 空格 暂停 · S 慢放 · A 轮播 · G 判定盒</span>
+    </div>
+
+    <!-- ── 竞技场控制条 ── -->
+    <div class="fight-bar" id="bar-arena" hidden>
+      <label class="fld">左
+        <select id="a-left"></select>
+      </label>
+      <span class="vs">VS</span>
+      <label class="fld">右
+        <select id="a-right"></select>
+      </label>
+      <button id="a-start" type="button">▶ 开始</button>
+      <button id="a-reset" type="button">↺ 重置</button>
+      <button id="a-geo" type="button">🎯 判定盒：关</button>
+      <label class="fld rng">侵略性 <input id="a-agg" type="range" min="0.2" max="1.5" step="0.05" value="0.8" /></label>
+      <label class="fld rng">格挡 <input id="a-guard" type="range" min="0.1" max="0.9" step="0.05" value="0.45" /></label>
+      <label class="fld rng">血量 <input id="a-hp" type="range" min="40" max="200" step="10" value="100" /></label>
+    </div>
+
+    <!-- ── 招式目录（仅演示模式） ── -->
+    <ol class="fight-list" id="fight-list"></ol>
+  </div>
+
+  <style is:global>
+    /* 配色沿用全站的 CSS 变量（--bg / --text / --accent / --border），和 blog 一致 */
+    .fight-page {
+      padding-bottom: 64px;
+    }
+    .fight-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 14px;
+      flex-wrap: wrap;
+    }
+    .fight-tabs button {
+      padding: 6px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .fight-tabs button:hover {
+      color: var(--text);
+      border-color: var(--text-faint);
+    }
+    .fight-tabs button.on {
+      color: var(--bg);
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    .fight-link {
+      margin-left: auto;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .fight-link:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .fight-stage {
+      height: 320px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: linear-gradient(180deg, transparent 0%, var(--bg-elevated) 86%);
+      overflow: hidden;
+    }
+    .fight-stage canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .fight-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .fight-bar[hidden] {
+      display: none;
+    }
+    .fight-bar button {
+      padding: 6px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    .fight-bar button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .fight-bar button.on {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .fld {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .fld select {
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .fld.rng input {
+      width: 88px;
+      accent-color: var(--accent);
+    }
+    .vs {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-faint);
+    }
+    .hint {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-faint);
+    }
+    .fight-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 6px;
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .fight-list li button {
+      width: 100%;
+      text-align: left;
+      padding: 7px 11px;
+      font-family: inherit;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .fight-list li button:hover {
+      color: var(--text);
+      border-color: var(--text-faint);
+    }
+    .fight-list li button.cur {
+      color: var(--bg);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    @media (max-width: 640px) {
+      .fight-stage {
+        height: 210px;
+      }
+      .fight-link {
+        margin-left: 0;
+      }
+    }
+  </style>
+
+  <script>
+    import { initFightBand, ROSTER } from '../scripts/fight';
+
+    /*
+     * 格斗工具页脚本
+     * ─────────────────────────────────────────────────────────────
+     * 这个页面同时承载「单招演示」和「竞技场对打」两种模式，共用一个 canvas。
+     * 三条铁律（都是踩过坑总结的）：
+     *   1. 下拉框**必须在引擎初始化之前**就能填好 —— 所以角色表从模块导出，
+     *      不能依赖 window.takinolFight（那时候还不存在），否则 select 是空的，
+     *      引擎再用 Number('')=0 静默读走值 → 左右都变成 0 号角色。
+     *   2. 改控件**不能直接重建引擎** —— 每次 init 都是一整局重开（人物/站位/血量全重置），
+     *      表现就是"选项自己飘"。下拉走防抖 + 值没变不重建；参数滑块只在「开始」时应用。
+     *   3. 任何定时器 / 异步回调动手之前，先确认自己还是"活着那个实例"（instance 守卫），
+     *      否则切模式后旧实例的 setInterval / 延迟队列会把新实例的状态改回去。
+     */
+
+    // ── 常量与工具 ──
+    const CANVAS_ID = 'fight-canvas';
+    const qs = new URLSearchParams(location.search);
+
+    /** 当前模式：demo（单招演示） / arena（对打）。
+     *  ?move=xxx 是「定格到某一招」的截图/检查参数，它隐含 demo 模式 ——
+     *  之前它被 ?auto / ?mode=arena 静默吞掉（demoApi 是 arena 引擎，没有那一招），
+     *  显式声明优先级：move > mode > 默认 demo。 */
+    let mode: 'demo' | 'arena' =
+      qs.has('move') ? 'demo'
+      : qs.get('mode') === 'arena' || qs.has('auto') ? 'arena'
+      : 'demo';
+    /** 判定盒状态要跨模式保留（切模式会重建引擎） */
+    let geoOn = (qs.get('debug') || '').includes('frames');
+    /** 引擎"代"：每次 boot +1。异步回调靠它判断自己是不是过期实例 */
+    let engineSeq = 0;
+
+    const engine = () => (window as any).takinolFight;
+    const demoApi = () => (window as any).takinolFight?.demo;
+    const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
+
+    /** 安全读数字：空串/NaN 回落到默认值（Number('') === 0 是这里的头号坑） */
+    const readNum = (node: HTMLSelectElement | HTMLInputElement | null, def: number): number => {
+      const n = Number(node?.value ?? '');
+      return Number.isFinite(n) && node?.value !== '' ? n : def;
+    };
+    /** 只在内容真的变了才写 DOM，避免 150ms 轮询引起的无谓重排 / 选中态闪动 */
+    const setText = (node: HTMLElement | null, txt: string) => {
+      if (node && node.textContent !== txt) node.textContent = txt;
+    };
+
+    // ── 控件引用 ──
+    const canvas = el<HTMLCanvasElement>(CANVAS_ID);
+    // 注意：markup 里只有一个 `.fight-stage` 的 class、没有 id，
+    // 用 el('fight-stage') 会拿到 null，于是 resizeCanvas 直接 return、画布永远不重设尺寸。
+    // 父容器一律从 canvas 反推。
+    const stage = canvas?.parentElement ?? null;
+    const tabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.fight-tabs button'));
+    const barDemo = el<HTMLDivElement>('bar-demo');
+    const barArena = el<HTMLDivElement>('bar-arena');
+    const listEl = el<HTMLOListElement>('fight-list');
+    const whoSel = el<HTMLSelectElement>('demo-who');
+    const leftSel = el<HTMLSelectElement>('a-left');
+    const rightSel = el<HTMLSelectElement>('a-right');
+    const aggEl = el<HTMLInputElement>('a-agg');
+    const guardEl = el<HTMLInputElement>('a-guard');
+    const hpEl = el<HTMLInputElement>('a-hp');
+
+    // ── canvas 尺寸：只由 JS 给 px，CSS 不参与，避免"量自己→撑大自己"的反馈环 ──
+    const resizeCanvas = () => {
+      if (!stage || !canvas) return;
+      const r = stage.getBoundingClientRect();
+      const w = Math.max(1, Math.floor(r.width));
+      const h = Math.max(1, Math.floor(r.height));
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (canvas.style.width !== `${w}px`) canvas.style.width = `${w}px`;
+      if (canvas.style.height !== `${h}px`) canvas.style.height = `${h}px`;
+      const bw = Math.round(w * dpr);
+      const bh = Math.round(h * dpr);
+      if (canvas.width !== bw) canvas.width = bw;
+      if (canvas.height !== bh) canvas.height = bh;
+    };
+
+    let resizeTimer = 0;
+    /*
+     * 统一的 resize 入口：window resize、ResizeObserver、boot 后的 rAF 补量
+     * 全部汇到这里做 120ms 防抖 —— 之前 RO 不防抖，拖窗口时每一帧都在
+     * 重分配 canvas 缓冲（重分配+清空），拖一下卡一下。
+     *
+     * ⚠️ 必须挡住「自己派发的合成 resize」：
+     * 下面会 dispatch 一个合成 resize 去通知引擎重新量尺寸，但 window 上的 resize
+     * 监听就是本 handler 自己 —— 不挡的话会形成「派发 → 排队 → 再派发」的自激链。
+     * 用 `ev.isTrusted === false` 识别合成事件（真实 resize 一定是 true）。
+     */
+    const onWinResize = (ev?: Event) => {
+      if (ev && ev.isTrusted === false) return; // 合成事件：只给引擎用，这里不处理
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeCanvas();
+        // 通知引擎重新量一次（这条会被自己的 handler 挡掉，只到引擎）
+        window.dispatchEvent(new Event('resize'));
+      }, 120);
+    };
+    window.addEventListener('resize', onWinResize);
+    if (typeof ResizeObserver !== 'undefined' && stage) {
+      new ResizeObserver(() => onWinResize()).observe(stage);
+    }
+
+    /*
+     * ── 角色下拉框：数据来自模块导出的 ROSTER，不依赖引擎实例 ──
+     *
+     * ⚠️ 这里有两个坑，都踩过：
+     *  1) `readNum(a,4) || Number(qs.get('r')??4)` —— 4 是 truthy，`||` 右边永远不执行，
+     *     `?r=9` 会被彻底忽略。URL 参数必须在填充之前取一次。
+     *  2) 每次 fillRoster 都无条件写 `sel.value` —— 只要谁多调一次，用户刚选的就被改掉，
+     *     表现就是"选项自己飘"。所以：**只在首次填充时写默认值**，往后一概不碰 value。
+     */
+    const urlPick = (k: string, def: number): number => {
+      const raw = qs.get(k);
+      if (raw === null || raw === '') return def;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : def;
+    };
+    const fillRoster = () => {
+      const data: { name: string }[] = ROSTER ?? [];
+      if (!data.length) return;
+      const targets: { sel: HTMLSelectElement | null; def: number }[] = [
+        { sel: whoSel, def: 0 },
+        { sel: leftSel, def: urlPick('l', 0) },
+        { sel: rightSel, def: urlPick('r', 4) },
+      ];
+      for (const t of targets) {
+        if (!t.sel) continue;
+        if (t.sel.options.length) continue; // 已填过：绝不重复追加、也绝不改写用户的选择
+        data.forEach((r, i) => {
+          const o = document.createElement('option');
+          o.value = String(i);
+          o.textContent = `${i + 1}. ${r.name}`;
+          t.sel!.appendChild(o);
+        });
+        const want = Math.max(0, Math.min(data.length - 1, t.def));
+        t.sel.value = String(want);
+      }
+    };
+
+    // ── 引擎生命周期 ──
+    let listSig = '';
+    /** 招式目录缓存：list 是个 getter（每次读都重新 buildDemoList 分配一轮），
+     *  150ms 轮询里每帧读一次纯属浪费 —— 只在角色（= kitId）变了才重建。 */
+    let listCacheKit = '';
+    let listCache: { i: number; key: string; name: string; kind?: string }[] = [];
+    const demoList = () => {
+      const kit = whoSel?.value ?? '';
+      if (kit !== listCacheKit || !listCache.length) {
+        listCacheKit = kit;
+        listCache = demoApi()?.list ?? [];
+      }
+      return listCache;
+    };
+    const boot = () => {
+      engine()?.destroy?.();
+      const mySeq = ++engineSeq; // 本次 init 的代号
+      listSig = '';
+      listCacheKit = '';
+      resizeCanvas();
+      if (mode === 'demo') {
+        // 不再传 forceVisible —— 引擎自己有 IntersectionObserver，
+        // 舞台滚出视口就暂停 update/render；forceVisible 会把这道软停整个关掉。
+        // disableDemoKeys：页面有自己的键盘处理（要同步 UI），两套同开会双重触发。
+        initFightBand({ canvasId: CANVAS_ID, demo: true, disableDemoKeys: true });
+        demoApi()?.debug?.({ frames: geoOn });
+      } else {
+        const left = readNum(leftSel, 0);
+        const right = readNum(rightSel, 4);
+        initFightBand({
+          canvasId: CANVAS_ID,
+          endless: false,
+          matchup: { left, right },
+          params: {
+            aggression: readNum(aggEl, 0.8),
+            guardChance: readNum(guardEl, 0.45),
+            hp: readNum(hpEl, 100),
+          },
+          debugOptions: { frames: geoOn },
+        });
+      }
+      lastCfg = cfgSig();
+      // 引擎量尺寸发生在 init 里；布局稳定后再让它量一次（首帧宽度可能没算完）
+      requestAnimationFrame(() => {
+        if (mySeq !== engineSeq) return; // 过期实例不要再动手
+        resizeCanvas();
+        window.dispatchEvent(new Event('resize')); // 只到引擎，自己的 handler 会挡掉
+      });
+    };
+
+    // ── 演示：招式目录 ──
+    const renderList = () => {
+      if (!listEl) return;
+      if (mode !== 'demo') {
+        if (listSig !== '__cleared') {
+          listEl.innerHTML = '';
+          listSig = '__cleared';
+        }
+        return;
+      }
+      const items = demoList();
+      const sig = items.map((x) => x.key).join('|');
+      if (sig === listSig) return;
+      listSig = sig;
+      listEl.innerHTML = '';
+      items.forEach((it, n) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = `${n + 1}. ${it.name}`;
+        b.dataset.idx = String(it.i);
+        b.addEventListener('click', () => demoApi()?.go(it.i));
+        li.appendChild(b);
+        listEl.appendChild(li);
+      });
+      sync();
+    };
+
+    // ── 状态同步（150ms 轮询，只写有变化的文字） ──
+    let lastCurIdx = -1;
+    const sync = () => {
+      for (const b of tabBtns) b.classList.toggle('on', b.dataset.mode === mode);
+      if (barDemo) barDemo.hidden = mode !== 'demo';
+      if (barArena) barArena.hidden = mode !== 'arena';
+
+      for (const b of [el<HTMLButtonElement>('d-geo'), el<HTMLButtonElement>('a-geo')]) {
+        if (!b) continue;
+        setText(b, geoOn ? '🎯 判定盒：开' : '🎯 判定盒：关');
+        b.classList.toggle('on', geoOn);
+      }
+      if (mode !== 'demo') {
+        renderList(); // 竞技场模式：确保目录被清空
+        return;
+      }
+      const d = demoApi();
+      if (!d) return;
+      // 角色下拉：只有当引擎里的库和下拉不一致时才回写（正常情况永不覆盖用户选择）
+      if (whoSel && typeof d.kitId === 'number' && whoSel.value !== String(d.kitId)) {
+        whoSel.value = String(d.kitId);
+      }
+      renderList();
+      // 目录高亮：只有当前招变了才碰 38+ 个按钮的 class（150ms 轮询里这是唯一的重头）
+      if (d.idx !== lastCurIdx) {
+        lastCurIdx = d.idx;
+        listEl?.querySelectorAll('button').forEach((b) => {
+          b.classList.toggle('cur', Number((b as HTMLElement).dataset.idx) === d.idx);
+        });
+      }
+      const p = el<HTMLButtonElement>('d-pause');
+      if (p) {
+        setText(p, d.paused ? '▶ 继续' : '⏸ 暂停');
+        p.classList.toggle('on', !!d.paused);
+      }
+      const s2 = el<HTMLButtonElement>('d-slow');
+      if (s2) {
+        setText(s2, d.slowOn ? '🐇 恢复速度' : '🐢 慢放');
+        s2.classList.toggle('on', !!d.slowOn);
+      }
+      const a = el<HTMLButtonElement>('d-auto');
+      if (a) {
+        setText(a, d.autoOn ? '🔁 轮播：开' : '🔁 轮播：关');
+        a.classList.toggle('on', !!d.autoOn);
+      }
+    };
+
+    // ── 模式切换 ──
+    for (const b of tabBtns) {
+      b.addEventListener('click', () => {
+        const next = b.dataset.mode as 'demo' | 'arena';
+        if (next === mode) return;
+        mode = next;
+        boot();
+        sync();
+      });
+    }
+
+    // ── 判定盒（两种模式都能用） ──
+    const toggleGeo = () => {
+      geoOn = !geoOn;
+      demoApi()?.debug?.({ frames: geoOn });
+      sync();
+    };
+    el('d-geo')?.addEventListener('click', toggleGeo);
+    el('a-geo')?.addEventListener('click', toggleGeo);
+
+    // ── 演示控制 ──
+    whoSel?.addEventListener('change', () => {
+      demoApi()?.who(readNum(whoSel, 0));
+      listSig = '';
+      renderList();
+      sync();
+    });
+    el('d-prev')?.addEventListener('click', () => {
+      const d = demoApi();
+      if (d) d.go(d.idx - 1);
+    });
+    el('d-next')?.addEventListener('click', () => {
+      const d = demoApi();
+      if (d) d.go(d.idx + 1);
+    });
+    el('d-pause')?.addEventListener('click', () => {
+      demoApi()?.pause();
+      sync();
+    });
+    el('d-slow')?.addEventListener('click', () => {
+      demoApi()?.slow();
+      sync();
+    });
+    el('d-auto')?.addEventListener('click', () => {
+      demoApi()?.auto();
+      sync();
+    });
+
+    /*
+     * ── 竞技场控制 ──
+     * 下拉：防抖 260ms + 值没变不重建（避免"选一下就整局重开"）。
+     * 滑块：拖动只更新数字显示，点「开始 / 重置」才应用（重建 = 重开一局，不该跟着拖动走）。
+     */
+    let bootTimer = 0;
+    let lastCfg = '';
+    const cfgSig = () =>
+      `${readNum(leftSel, 0)}|${readNum(rightSel, 4)}|${readNum(aggEl, 0.8)}|${readNum(guardEl, 0.45)}|${readNum(hpEl, 100)}`;
+    const scheduleBoot = () => {
+      if (mode !== 'arena') return;
+      window.clearTimeout(bootTimer);
+      bootTimer = window.setTimeout(() => {
+        const mySeq = engineSeq;
+        if (mode !== 'arena') return;
+        if (cfgSig() === lastCfg) return; // 配置没变 → 不重建
+        if (mySeq !== engineSeq) return; // 期间又被触发过，让最新那次去做
+        boot();
+      }, 260);
+    };
+    for (const sl of [leftSel, rightSel]) sl?.addEventListener('change', scheduleBoot);
+    el('a-start')?.addEventListener('click', () => {
+      lastCfg = '';
+      boot();
+    });
+    /*
+     * 「重置」= 参数回默认值 + 重开一局（角色保留用户当前选择 —— 那是他明确挑的，
+     * 一起清掉反而意外）。想换角色直接改下拉框即可。
+     */
+    el('a-reset')?.addEventListener('click', () => {
+      if (aggEl) aggEl.value = '0.8';
+      if (guardEl) guardEl.value = '0.45';
+      if (hpEl) hpEl.value = '100';
+      syncSliders();
+      lastCfg = '';
+      boot();
+    });
+
+    // 滑块数值直接写在标签后面（只显示，不重建引擎）
+    const sliderInfo = [
+      { el: aggEl, fmt: (v: number) => v.toFixed(2) },
+      { el: guardEl, fmt: (v: number) => v.toFixed(2) },
+      { el: hpEl, fmt: (v: number) => String(Math.round(v)) },
+    ];
+    const syncSliders = () => {
+      for (const it of sliderInfo) {
+        if (!it.el) continue;
+        let tag = it.el.parentElement?.querySelector<HTMLSpanElement>('.sl-val') ?? null;
+        if (!tag) {
+          tag = document.createElement('span');
+          tag.className = 'sl-val';
+          tag.style.cssText = 'font-family:var(--font-mono);font-size:11px;color:var(--accent);margin-left:4px';
+          it.el.parentElement?.appendChild(tag);
+        }
+        setText(tag, it.fmt(readNum(it.el, 0)));
+      }
+    };
+    for (const it of sliderInfo) it.el?.addEventListener('input', syncSliders);
+    syncSliders();
+
+    // ── 键盘快捷键（仅演示模式） ──
+    window.addEventListener('keydown', (ev) => {
+      if (mode !== 'demo') return;
+      // 焦点在角色下拉框上时，←→ 是用户在选人，不能抢去切招
+      const tag = (ev.target as HTMLElement | null)?.tagName;
+      if (tag === 'SELECT' || tag === 'INPUT') return;
+      const k = ev.key.toLowerCase();
+      if (ev.key === 'ArrowRight') {
+        demoApi()?.go((demoApi()?.idx ?? 0) + 1);
+        ev.preventDefault();
+      } else if (ev.key === 'ArrowLeft') {
+        demoApi()?.go((demoApi()?.idx ?? 0) - 1);
+        ev.preventDefault();
+      } else if (ev.key === ' ') {
+        demoApi()?.pause();
+        sync();
+        ev.preventDefault();
+      } else if (k === 's') {
+        demoApi()?.slow();
+        sync();
+      } else if (k === 'a') {
+        demoApi()?.auto();
+        sync();
+      } else if (k === 'g') {
+        toggleGeo();
+      }
+    });
+
+    // ── 首次启动：先填下拉（纯数据），再 init 引擎 ──
+    resizeCanvas();
+    fillRoster();
+    boot();
+
+    // ?move=xxx&frac=0.42&fx=1 —— 直接定格到某招某帧（截图 / 逐帧检查用）
+    // （mode 已在开头保证 ?move= 时是 demo；这里再兜一层防 future 改动）
+    const mv = qs.get('move');
+    if (mv && mode === 'demo') {
+      const d0 = demoApi();
+      const item = demoList().find((x) => x.key === mv);
+      if (d0 && item) {
+        d0.go(item.i);
+        const frac = Number(qs.get('frac'));
+        if (qs.has('frac') && !Number.isNaN(frac)) d0.seek(frac);
+        if (qs.has('fx')) d0.fx();
+      }
+    }
+    sync();
+
+    /*
+     * 150ms 轮询收窄成「只服务演示模式」：
+     *  - 竞技场的所有按钮状态都由各自的 click/change 事件同步（上面每个 handler 都调了 sync）；
+     *  - 标签页隐藏时浏览器的定时器本来就会被节流，但显式跳过最干净；
+     *  - pagehide 时清掉 —— 之前这个 interval 从不清理，bfcache 恢复页面后会
+     *    叠出第二个轮询（旧 tab 的 sync 还活着，和新实例打架）。
+     */
+    let syncTimer = window.setInterval(() => {
+      if (mode === 'demo' && !document.hidden) sync();
+    }, 150);
+    window.addEventListener('pagehide', () => window.clearInterval(syncTimer));
+    /*
+     * bfcache 恢复（后退/前进回到本页）：pagehide 清掉了轮询，必须重建，
+     * 否则回来的页面 UI 状态永远不更新（引擎那边有 pageshow 复活 rAF，
+     * 这边负责把 DOM 同步接回去 —— 两边缺一都是「回来就死一半」）。
+     */
+    window.addEventListener('pageshow', (ev) => {
+      if (!(ev as PageTransitionEvent).persisted) return;
+      window.clearInterval(syncTimer); // 防御：万一 pagehide 没来得及清
+      syncTimer = window.setInterval(() => {
+        if (mode === 'demo' && !document.hidden) sync();
+      }, 150);
+    });
+  </script>
+</Base>

@@ -11,6 +11,11 @@ export default defineConfig({
   integrations: [sitemap()],
   // 开发工具条会遮挡画布底部，逐帧检查时碍事，关掉（只影响 dev，不影响构建）
   devToolbar: { enabled: false },
+  // 旧的独立页面已经合并进 /fight，这里做永久跳转，避免老书签 404
+  redirects: {
+    '/arena': '/fight?mode=arena',
+    '/fight-demo': '/fight',
+  },
   markdown: {
     // 支持 $$...$$ 块公式 与 $...$ 行内公式
     remarkPlugins: [remarkMath],

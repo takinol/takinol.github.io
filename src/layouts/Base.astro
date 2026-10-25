@@ -11,17 +11,6 @@ const { title, description } = Astro.props;
 const pageTitle = title ? `${title} · ${site.name}` : `${site.name} · ${site.tagline}`;
 const pageDescription = description ?? site.description;
 
-// 格斗工具互切：这几个页面互为「同一个工具的不同视图」，统一给一条子导航，
-// 不用再靠记 URL 或从图鉴里绕进去。
-const FIGHT_TOOLS = [
-  { label: '竞技场', href: '/arena', hint: '选角色、调参数，真打对练' },
-  { label: '招式演示', href: '/fight-demo', hint: '逐个播放招式，?debug=frames 看判定胶囊' },
-  { label: '逐帧检查', href: '/pose', hint: '单帧定格（无页头，适合截图对比）' },
-  { label: '角色图鉴', href: '/roster', hint: '15 个流派剪影一览' },
-];
-const curPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
-const isTool = (href: string) => curPath === href || curPath.startsWith(href + '/');
-const onFightTool = FIGHT_TOOLS.some((t) => isTool(t.href));
 ---
 
 <!doctype html>
@@ -98,23 +87,6 @@ const onFightTool = FIGHT_TOOLS.some((t) => isTool(t.href));
     </header>
 
     <main>
-      {onFightTool && (
-        <div class="fight-tools">
-          <div class="container fight-tools-inner">
-            <span class="fight-tools-label">格斗工具</span>
-            {FIGHT_TOOLS.map((t) => (
-              <a
-                class:list={['fight-tool', { cur: isTool(t.href) }]}
-                href={t.href}
-                title={t.hint}
-                aria-current={isTool(t.href) ? 'page' : undefined}
-              >
-                {t.label}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
       <slot />
     </main>
 
