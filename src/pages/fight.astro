@@ -45,11 +45,19 @@ import Base from '../layouts/Base.astro';
         <select id="a-right"></select>
       </label>
       <button id="a-start" type="button">▶ 开始</button>
+      <label class="fld">模式
+        <select id="a-vs">
+          <option value="ai" selected>AI 对战</option>
+          <option value="pve">人机（P1 键盘）</option>
+          <option value="pvp">双人对打</option>
+        </select>
+      </label>
       <button id="a-reset" type="button">↺ 重置</button>
       <button id="a-geo" type="button">🎯 判定盒：关</button>
       <label class="fld rng">侵略性 <input id="a-agg" type="range" min="0.2" max="1.5" step="0.05" value="0.8" /></label>
       <label class="fld rng">格挡 <input id="a-guard" type="range" min="0.1" max="0.9" step="0.05" value="0.45" /></label>
       <label class="fld rng">血量 <input id="a-hp" type="range" min="40" max="200" step="10" value="100" /></label>
+      <span class="hint" id="vs-hint">选「人机/双人」后点开始：P1 = A/D 移动 · W 跳 · S 蹲 · J 轻 · K 重 · ↓+J 下段 · ↓+K 大招 · 双击方向冲刺 · 打中后再按 J/K 连招 · U 格挡 · L 翻滚</span>
     </div>
 
     <!-- ── 招式目录（仅演示模式） ── -->
@@ -338,7 +346,8 @@ import Base from '../layouts/Base.astro';
       const targets: { sel: HTMLSelectElement | null; def: number }[] = [
         { sel: whoSel, def: 0 },
         { sel: leftSel, def: urlPick('l', 0) },
-        { sel: rightSel, def: urlPick('r', 4) },
+        // 右侧默认**随机**：以前固定 4 号，导致"竞技场老见那几个人"，尤其弩兵
+        { sel: rightSel, def: Number.isFinite(Number(qs.get('r'))) && qs.get('r') !== '' ? Number(qs.get('r')) : Math.floor(Math.random() * (ROSTER?.length ?? 15)) },
       ];
       for (const t of targets) {
         if (!t.sel) continue;
@@ -386,6 +395,9 @@ import Base from '../layouts/Base.astro';
         initFightBand({
           canvasId: CANVAS_ID,
           endless: false,
+          // 对战模式：pve = P1 键盘；pvp = 双人同键盘（P1 WASD+JK / P2 方向键+小键盘）
+          manual: el<HTMLSelectElement>('a-vs')?.value === 'pve',
+          manual2: el<HTMLSelectElement>('a-vs')?.value === 'pvp',
           matchup: { left, right },
           params: {
             aggression: readNum(aggEl, 0.8),
@@ -535,7 +547,7 @@ import Base from '../layouts/Base.astro';
     let bootTimer = 0;
     let lastCfg = '';
     const cfgSig = () =>
-      `${readNum(leftSel, 0)}|${readNum(rightSel, 4)}|${readNum(aggEl, 0.8)}|${readNum(guardEl, 0.45)}|${readNum(hpEl, 100)}`;
+      `${readNum(leftSel, 0)}|${readNum(rightSel, 4)}|${readNum(aggEl, 0.8)}|${readNum(guardEl, 0.45)}|${readNum(hpEl, 100)}|${el<HTMLSelectElement>('a-vs')?.value ?? 'ai'}`;
     const scheduleBoot = () => {
       if (mode !== 'arena') return;
       window.clearTimeout(bootTimer);
@@ -548,7 +560,14 @@ import Base from '../layouts/Base.astro';
       }, 260);
     };
     for (const sl of [leftSel, rightSel]) sl?.addEventListener('change', scheduleBoot);
-    el('a-start')?.addEventListener('click', () => {
+    // 对战模式切换**立即生效**（防抖重建）—— 以前必须手动点「开始」，
+    // 很多"切了人机却操作不了"其实是引擎还在 AI 模式
+    el('a-vs')?.addEventListener('change', () => {
+      scheduleBoot();
+      sync();
+    });
+    el('a-start')?.addEventListener('click', (ev) => {
+      (ev.currentTarget as HTMLElement)?.blur?.();   // 摘焦点：防止 Space/Enter 二次触发按钮
       lastCfg = '';
       boot();
     });

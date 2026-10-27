@@ -19,6 +19,7 @@ import type { FsmStateConfig } from '@statewalker/fsm';
 // ── 招式库：每个英雄一份完整副本（见 moves/kits/*.ts）──
 import { P } from './moves/types';
 import { bladeCenterline, drawKatana } from './katana';
+import { drawHeldWeapon } from './weapons';
 import type { Atk, AtkHit, Clip, Pose, StrikePart } from './moves/types';
 import { ALL_ATKS, ALL_CLIPS, HERO_KITS } from './moves';
 // ── 装饰挂载 + 布料物理（design-3-deco-cloth.md）：判定层不 import 这里的任何类型（G3）──
@@ -138,8 +139,8 @@ export const fk = (p: Pose, swap = false): Joints => {
  * 2. 姿势库
  * ============================================================ */
 
-const IDLE_A = P({ lean: 0.05, armUB: 0.2, armLB: 0.35, armUF: -0.15, armLF: 0.3, legUB: -0.12, legLB: 0, legUF: 0.12, legLF: 0.05 });
-const IDLE_B = P({ lean: 0.09, head: -0.05, armUB: 0.26, armLB: 0.4, armUF: -0.09, armLF: 0.35, legUB: -0.09, legLB: 0, legUF: 0.09, legLF: 0.06 });
+const IDLE_A = P({ lean: 0.05, armUB: 0.2, armLB: 0.35, armUF: -0.15, armLF: 0.3, legUB: -0.3, legLB: -0.06, legUF: 0.3, legLF: -0.06 });
+const IDLE_B = P({ lean: 0.09, head: -0.05, armUB: 0.26, armLB: 0.4, armUF: -0.09, armLF: 0.35, legUB: -0.26, legLB: -0.08, legUF: 0.26, legLF: -0.08 });
 
 /** 格斗架势：双手抬起护住面门 */
 const GUARD = P({ lean: 0.15, head: -0.06, armUB: 1.0, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legLB: 0, legUF: 0.34, legLF: 0.12 });
@@ -1149,6 +1150,95 @@ export const ROSTER = [
     { name: '齿轮机关师', build: 'puppeteer' as const, skin: 17, aggression: 0.6, guardChance: 0.45 },
 ];
 
+/* ============================================================
+ * 英雄专属能力（按 kitId 键控 —— build 不唯一：疾风剑客/赤焰武人都是 swordsman，
+ * 按 build 键控会让两个英雄共享能力，kitId 0~14 才是每英雄真正的身份）
+ *
+ * 只在四个挂点被读取（不要到处 if build === ...）：
+ *   ① 命中伤害结算（攻击方 dmg / 防守方 taken）
+ *   ② 击倒阈值（kdBonus）
+ *   ③ 架势伤害（guardDmgMul / taken.guardCostMul）
+ *   ④ AI 选招（pers 性格微调 / halfNovelty 复读惩罚减半）
+ * 触发时弹 tag（黄字），让「独特能力」在画面上看得见。
+ * ============================================================ */
+export interface HeroAbility {
+  /** 能力名（图鉴/说明） */
+  name: string;
+  desc: string;
+  /** 攻击方伤害修正 */
+  dmg?: {
+    /** 低血狂化：hp ≤ below 时全额伤害 ×mul */
+    lowHp?: { below: number; mul: number; tag: string };
+    /** 概率暴击 */
+    crit?: { chance: number; mul: number; tag: string };
+    /** 距离加成：双方距离 > beyond 时 ×mul（长兵器/远程） */
+    range?: { beyond: number; mul: number; tag: string };
+    /** 连段加成：comboTimer > 0（正在连招中）×mul */
+    combo?: { mul: number; tag: string };
+    /** 蓄势：ambushT > 0（招架成功/翻滚后）下一击 ×mul，一次性消耗 */
+    ambush?: { mul: number; tag: string };
+  };
+  /** 防守方体质 */
+  taken?: {
+    /** 受到伤害 ×mul（重甲 <1） */
+    dmgMul?: number;
+    /** 概率闪避：整击落空（不掉血不硬直） */
+    dodge?: { chance: number; tag: string };
+    /** 被打在盾上时架势损耗 ×mul（<1 = 更难被破防） */
+    guardCostMul?: number;
+  };
+  /** 打在对手盾上的架势伤害 ×mul（>1 = 破防专家） */
+  guardDmgMul?: number;
+  /** 击倒阈值降低：h.knock > 320 - kdBonus 就放倒（重武器） */
+  kdBonus?: number;
+  /** AI：novelty 复读惩罚减半（机关不疲劳/疯子不倦） */
+  halfNovelty?: boolean;
+  /** AI 性格微调（叠加在 archetype 默认上） */
+  pers?: { risk?: number; greed?: number; guard?: number; parry?: number };
+}
+
+export const HERO_ABILITY: Record<number, HeroAbility> = {
+  0: { name: '燕返', desc: '招架成功后的下一击 +40% 伤害（居合反击）',
+       dmg: { ambush: { mul: 1.4, tag: '燕返' } },
+       pers: { parry: 0.6 } },
+  1: { name: '游射', desc: '距离 >190 时伤害 +25%（放风筝专家）',
+       dmg: { range: { beyond: 190, mul: 1.25, tag: '游射' } },
+       pers: { greed: 0.15 } },
+  2: { name: '铁壁', desc: '架势损耗 -45%、受伤 -8%（盾卫的骄傲）',
+       taken: { dmgMul: 0.92, guardCostMul: 0.55 } },
+  3: { name: '枪锋', desc: '距离 >140 时伤害 +20%（一寸长一寸强）',
+       dmg: { range: { beyond: 140, mul: 1.2, tag: '枪锋' } } },
+  4: { name: '连刃', desc: '连招中每一击 +15% 伤害（越打越快）',
+       dmg: { combo: { mul: 1.15, tag: '连刃' } },
+       pers: { greed: 0.95 } },
+  5: { name: '破阵', desc: '打在盾上的架势伤害 +60%（破防专家）',
+       guardDmgMul: 1.6 },
+  6: { name: '重锤', desc: '更容易放倒对手（击倒门槛 -40）、受伤 -10%',
+       kdBonus: 40, taken: { dmgMul: 0.9 } },
+  7: { name: '狙杀', desc: '距离 >210 时伤害 +30%（硝石弹道）',
+       dmg: { range: { beyond: 210, mul: 1.3, tag: '狙杀' } } },
+  8: { name: '血焰', desc: '低血狂化：hp<40% 时伤害 +35%',
+       dmg: { lowHp: { below: 40, mul: 1.35, tag: '血焰' } } },
+  9: { name: '残影', desc: '翻滚后 0.9s 内下一击 +30%（影袭）',
+       dmg: { ambush: { mul: 1.3, tag: '残影' } },
+       pers: { risk: 0.75 } },
+  10: { name: '醉步', desc: '22% 概率整击闪避（踉跄假动作）',
+        taken: { dodge: { chance: 0.22, tag: '醉步' } },
+        pers: { risk: 0.7 } },
+  11: { name: '血怒', desc: 'hp<40% 时伤害 +35%（狂战士血统）',
+        dmg: { lowHp: { below: 40, mul: 1.35, tag: '血怒' } },
+        pers: { risk: 0.9 } },
+  12: { name: '月影', desc: '15% 概率暴击 ×1.5（月下必杀）',
+        dmg: { crit: { chance: 0.15, mul: 1.5, tag: '月影' } } },
+  13: { name: '缠锁', desc: '更容易放倒对手（击倒门槛 -40）',
+        kdBonus: 40 },
+  14: { name: '机关过载', desc: '招式永不复读疲劳（AI 复读惩罚减半）',
+        halfNovelty: true },
+};
+
+/** 读某英雄的能力（kitId 越界安全） */
+const abilityOf = (f: { kitId: number }): HeroAbility | undefined => HERO_ABILITY[f.kitId];
+
 const MOVE_META: Record<string, {
   startup: number; recovery: number;
   breakGuard?: boolean; finisher?: boolean;
@@ -1366,9 +1456,9 @@ export const walkPose = (phase: number, speed = 1): Pose => {
     armLB: 0.9,
     armUF: 0.9 + s * 0.35 * speed,
     armLF: 1.5,
-    legUB: -s * 0.62 * speed,
+    legUB: -s * 0.78 * speed,
     legLB: knee(-c),   // B 腿与 F 腿反相：F 向前扫时（c>0）B 正在支撑
-    legUF: s * 0.62 * speed,
+    legUF: s * 0.78 * speed,
     legLF: knee(c),
   });
 };
@@ -1862,8 +1952,10 @@ export interface FightOptions {
   showNames?: boolean;
   /** 设定模式：指定左右角色（ROSTER 下标） */
   matchup?: { left: number; right: number };
-  /** 手动模式：左侧角色由键盘控制（A/D 移动 W 跳 S 蹲 J/K 攻击 L 翻滚 U 格挡 空格反击） */
+  /** 手动模式：左侧角色由键盘控制（A/D 移动 W 跳 S 蹲 J 轻击 K 重击 L 翻滚 U 格挡 空格反击） */
   manual?: boolean;
+  /** 双人模式：右侧角色由键盘控制（方向键移动 Num1 轻 Num2 重 Num3 格挡 Num0 翻滚 NumEnter 反击） */
+  manual2?: boolean;
   /** 参数覆盖：侵略性 / 格挡倾向 / 血量 */
   params?: { aggression?: number; guardChance?: number; hp?: number };
   /** 调试模式：实时绘制骨骼轮廓叠加层（关节点+骨连线），用于动作精调。
@@ -2036,8 +2128,13 @@ interface Fighter {
   intent: { kind: string; until: number; move?: string; punishWith?: string; tag?: string } | null;
   /** 最近一次「被我打倒」的时间戳：用于击倒递减（2.5s 内重复击倒要更难触发） */
   lastKdAt: number;
-  /** 最近用过的招（novelty 惩罚用，最多留 4 条） */
-  recentMoves: { k: string; t: number }[];
+    /** 最近用过的招（novelty 惩罚用，最多留 4 条） */
+    recentMoves: { k: string; t: number }[];
+    /** 每个招最后一次使用的时间（探索保底：久未使用的招加分） */
+    lastUseAt: Record<string, number>;
+    /** 手动模式输入缓冲（秒）：出招被冷却/硬直拒绝时缓存，一能行动立即出 */
+    bufLight: number;
+    bufHeavy: number;
   /**
    * 对手画像（R-8）：滑动计数，记的是「我看到他爱怎么防 / 多爱抢 / 多常挥空」。
    * 只用于规划层的针对性决策，不参与选招打分（避免又变成乘法塔）。
@@ -2062,8 +2159,10 @@ interface Fighter {
   knockdown: boolean;
   /** 当前哪只手臂在镜头近侧（防闪烁的滞后量） */
   armFront: 'B' | 'F';
-  /** 布料摆动（被击打时衣服会飘） */
-  sway: number;
+    /** 布料摆动（被击打时衣服会飘） */
+    sway: number;
+    /** 蓄势窗（英雄能力）：招架成功/翻滚后短暂存在，下一击消耗（见 HERO_ABILITY.dmg.ambush） */
+    ambushT: number;
   /** 装备流派：决定剪影主装饰、武器轨迹与动态件类型 */
   build: Gear;
   /** 动态件 A：布片柔体链（披风/袈裟/围裙）—— 极坐标解算 + 碰撞 + 硬复位（design-3） */
@@ -2426,6 +2525,21 @@ export function initFightBand(opts: FightOptions = {}): void {
     knock: number;
   }
   let projectiles: Projectile[] = [];
+
+  /**
+   * 钉在身上的投射物（箭/镖中靶后不再凭空消失，插在命中位置跟人走，0.9s 淡出）。
+   * dx/dy 是命中瞬间相对目标胸口的偏移（世界系，跟着目标平移）。
+   */
+  interface StuckFx {
+    kind: 'bolt' | 'shuriken';
+    target: Fighter;
+    dx: number;
+    dy: number;
+    ang: number;
+    life: number;
+    max: number;
+  }
+  let stuckFx: StuckFx[] = [];
 
   /* ============================================================
    * 调试系统：命中盒计算 / 洋葱皮 / 帧步进 / HUD
@@ -2869,6 +2983,8 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /** 大规模检测用计数器（引擎内部统计，比从外面看状态可靠） */
   const stats = { attacks: 0, hits: 0, whiffs: 0, blocks: 0, breaks: 0, downs: 0, nonlethalDowns: 0, lethalDowns: 0, deaths: 0 };
+  /** 无限模式上一位挑战者的 roster 下标（避免连续刷同一个人） */
+  let lastChallengerIdx = -1;
   /** 决策落盘：输入观测 + 实际动作 + 增强元数据，行为克隆 / 复盘直接可用（环形保留最近 4000 条） */
   const trace: {
     t: number;
@@ -2889,19 +3005,65 @@ export function initFightBand(opts: FightOptions = {}): void {
     intentLockRemaining: number;
   }[] = [];
   let elapsed = 0;
-  /** 手动模式按键表（AbortController 便于 destroy 时一次性移除监听） */
+  /**
+   * 手动模式按键表（AbortController 便于 destroy 时一次性移除监听）。
+   * keys = 按住集合（走位/格挡读它）；justPressed = 本帧刚按下（出招读它，边沿触发）；
+   * justPressed 在每帧 update 末尾清空 —— decide 读到的是「这一帧的新输入」。
+   * 双击方向 = 冲刺/急退：lastTapDir 记上次按向的时间戳。
+   */
   const keys = new Set<string>();
+  /**
+   * 攻击/功能键的 pending 标志：keydown 置位、decide 消费后清零。
+   * ⚠️ 不能用「每帧边沿集合」—— decide 有 0.14s 节流（idle 每 gap 才决策一次），
+   * 边沿输入会在两次决策之间被清掉，按键整个丢失（手动测试抓出来的）。
+   * pending 标志 + 输入缓冲（bufLight/bufHeavy）才是对的组合。
+   */
+  let p1Light = false, p1Heavy = false, p1Roll = false, p1Counter = false;
+  let p2Light = false, p2Heavy = false, p2Roll = false, p2Counter = false;
+  const lastTapDir = new Map<string, number>();   // 'P1前'/'P1后'/'P2前'/'P2后' → elapsed
   const keyAbort = new AbortController();
-  if (opts.manual) {
+  const manualAny = !!(opts.manual || opts.manual2);
+  if (manualAny) {
     const opt = { signal: keyAbort.signal };
     window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;   // 按住不重复触发（出招必须边沿）
       keys.add(e.code);
+      // 攻击/功能键 → pending（decide 消费）
+      if (opts.manual) {
+        if (e.code === 'KeyJ') p1Light = true;
+        if (e.code === 'KeyK') p1Heavy = true;
+        if (e.code === 'KeyL') p1Roll = true;
+        if (e.code === 'Space') p1Counter = true;
+      }
+      if (opts.manual2) {
+        if (e.code === 'Numpad1' || e.code === 'Comma') p2Light = true;
+        if (e.code === 'Numpad2' || e.code === 'Period') p2Heavy = true;
+        if (e.code === 'Numpad0' || e.code === 'ShiftRight') p2Roll = true;
+        if (e.code === 'NumpadEnter' || e.code === 'Quote') p2Counter = true;
+      }
+      // 双击方向检测（0.28s 内同向两按 = 冲刺）
+      for (const [dir, codes] of [
+        ['L', ['KeyA', 'ArrowLeft']], ['R', ['KeyD', 'ArrowRight']],
+      ] as const) {
+        if (codes.includes(e.code)) {
+          const tag = `${e.code.startsWith('Arrow') ? 'P2' : 'P1'}${dir}`;
+          const last = lastTapDir.get(tag) ?? -9;
+          if (elapsed - last < 0.28) {
+            if (opts.manual && tag.startsWith('P1')) p1DashT = 0.22;
+            if (opts.manual2 && tag.startsWith('P2')) p2DashT = 0.22;
+            lastTapDir.delete(tag);
+          } else lastTapDir.set(tag, elapsed);
+        }
+      }
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     }, opt);
     window.addEventListener('keyup', (e) => keys.delete(e.code), opt);
   }
   let rafId = 0;
   let last = 0;
+  /** 双击冲刺窗口（P1/P2 各一份，>0 时走位速度 ×2.2） */
+  let p1DashT = 0;
+  let p2DashT = 0;
   let running = false; // 引擎运行标志：destroy 时设为 false 防止 rAF 竞态
   let visible = true; // 默认可见，IntersectionObserver 会修正；避免初始 false 导致首帧永远不更新
   let tabVisible = document.visibilityState !== 'hidden';
@@ -2958,6 +3120,10 @@ export function initFightBand(opts: FightOptions = {}): void {
     build: (i % 2 === 0 ? 'swordsman' : 'ranger') as Gear,
     clothChain: null,
     windPulse: 0,
+    ambushT: 0,
+    lastUseAt: {},
+    bufLight: 0,
+    bufHeavy: 0,
     trinket: { x: NaN, y: NaN, px: 0, py: 0 },
     pdController: null,
     aggression: rand(0.45, 0.95),
@@ -4345,12 +4511,17 @@ export function initFightBand(opts: FightOptions = {}): void {
   const personalityOf = (f: Fighter): AIPersonality => {
     const b = GEAR_SPEC[f.build].behavior;
     const g = clampN(f.guardChance, 0, 1);
-    if (b === 'turtle') return { risk: 0.3, greed: 0.35, guard: Math.max(0.72, g), parry: 0.55 };
-    if (b === 'rusher') return { risk: 0.82, greed: 0.85, guard: Math.min(0.3, g), parry: 0.12 };
-    if (b === 'punisher') return { risk: 0.45, greed: 0.5, guard: g, parry: 0.45 };
-    if (b === 'zoner') return { risk: 0.32, greed: 0.25, guard: g, parry: 0.28 };
-    if (b === 'trickster') return { risk: 0.62, greed: 0.6, guard: g * 0.85, parry: 0.34 };
-    return { risk: 0.6, greed: 0.75, guard: g, parry: 0.22 }; // brawler
+    let p: AIPersonality;
+    if (b === 'turtle') p = { risk: 0.3, greed: 0.35, guard: Math.max(0.72, g), parry: 0.55 };
+    else if (b === 'rusher') p = { risk: 0.82, greed: 0.85, guard: Math.min(0.3, g), parry: 0.12 };
+    else if (b === 'punisher') p = { risk: 0.45, greed: 0.5, guard: g, parry: 0.45 };
+    else if (b === 'zoner') p = { risk: 0.32, greed: 0.25, guard: g, parry: 0.28 };
+    else if (b === 'trickster') p = { risk: 0.62, greed: 0.6, guard: g * 0.85, parry: 0.34 };
+    else p = { risk: 0.6, greed: 0.75, guard: g, parry: 0.22 }; // brawler
+    // 英雄能力对性格的微调（HERO_ABILITY.pers）
+    const ap = abilityOf(f)?.pers;
+    if (ap) p = { risk: ap.risk ?? p.risk, greed: ap.greed ?? p.greed, guard: ap.guard ?? p.guard, parry: ap.parry ?? p.parry };
+    return p;
   };
 
   /**
@@ -4430,6 +4601,11 @@ export function initFightBand(opts: FightOptions = {}): void {
       hc *= slow;
       note = note || 'neutral';
     }
+    // 远程招（投射物）只在拉开距离时才用：贴脸扔镖/放箭 = 白送对手一套连招
+    if (a.projectile && gap < 150) {
+      hc *= 0.12;
+      note = note || 'too-close-ranged';
+    }
     // 他躺在地上：任何招都打不到（以前把 down 当普通硬直，于是疯狂对空气出招）
     if (ob.down) {
       hc *= 0.08;
@@ -4463,13 +4639,26 @@ export function initFightBand(opts: FightOptions = {}): void {
     let score = style * (hc * reward - (1 - hc) * risk * pers.risk);
 
     /*
+     * 久未使用奖励（探索保底）：超过 9 秒没出的招逐渐加价。
+     * 没有 it，后旋踢/飞踢这类「hc 稍低但好看」的招会被jab/推踢永远压在池底 ——
+     * 玩家视角就是「这英雄明明有这招但从来不用」。加价上限 1.6，不至于为花哨送死。
+     */
+    const lastUse = f.lastUseAt[key] ?? -99;
+    const idleFor = elapsed - lastUse;
+    if (idleFor > 9) score *= Math.min(1.6, 1 + (idleFor - 9) * 0.12);
+
+    /*
      * 复读惩罚（Novelty）：最近 3 秒内用过的招打折。
      * 没有它，AI 会一直刷期望值最高的那一招（拔刀斩/侧踹），看起来像复读机。
      */
     const recent = f.recentMoves.find((r) => r.k === key);
     if (recent) {
       const age = elapsed - recent.t;
-      if (age < 3) score *= 0.55 + 0.15 * (age / 3);
+      if (age < 3) {
+        // 英雄能力「机关过载」类：novelty 惩罚减半（惩罚量打五折，不是分数打折）
+        const raw = 1 - (0.55 + 0.15 * (age / 3));
+        score *= 1 - raw * (abilityOf(f)?.halfNovelty ? 0.5 : 1);
+      }
     }
     return { key, gap, hitChance: hc, reward, risk, style, score, note };
   };
@@ -4725,26 +4914,109 @@ export function initFightBand(opts: FightOptions = {}): void {
 
   /* ───────────────────────────── 决策入口 ───────────────────────────── */
 
+  /**
+   * 手动键位 → Decision（P1/P2 共用，键位表由调用方翻译）。
+   * - 连招触发：命中确认窗（comboTimer>0，= 你刚打到人）内**再按攻击键**
+   *   → 从本英雄连招图里挑一条确认边立即接上（这就是「玩家触发连招」）；
+   *   不按就打完收招 —— 手动斗士的自动连招已关（见取消窗口处的过滤）。
+   * - ↓+轻击 = 下段（择！），↓+重击 = 本流派大招（iai/smash/flailSwing…）。
+   * - 双击方向 = 冲刺（dashT>0 时走位速度在 update 里 ×2.2）。
+   * - 输入缓冲：出招被冷却/硬直拒绝时缓存 0.5s，一能行动立即出 ——
+   *   「我按了但没出」是网页格斗游戏手感差的第一杀手（调研共识）。
+   */
+  const manualDecide = (
+    f: Fighter,
+    opp: Fighter,
+    inp: {
+      left: boolean; right: boolean; up: boolean; down: boolean;
+      block: boolean; roll: boolean; light: boolean; heavy: boolean;
+      counter: boolean; dashT: number;
+    },
+  ): Decision => {
+    const oppRight = opp.x >= f.x;
+    const canAct = f.cool <= 0 && f.stun <= 0;
+    const lowMove: Decision | null = f.atks.lowSlash
+      ? 'lowSlash'
+      : f.atks.snapKick ? 'snapKick' : null;
+    const atkKey = (heavy: boolean): Decision => {
+      // 连招：确认窗内按攻击 → 连招图 hit/block 确认边（有就用图里的，没有就原样重击）
+      if (f.comboTimer > 0) {
+        const graph = comboGraphOf(f);
+        const edges = (graph ?? []).filter((e) => e.from === f.state && (e.confirm === 'hit' || e.confirm === 'block'));
+        if (edges.length) {
+          let total = edges.reduce((s, e) => s + (e.weight ?? 1), 0);
+          let r = Math.random() * total;
+          for (const e of edges) {
+            r -= e.weight ?? 1;
+            if (r <= 0) return e.to as Decision;
+          }
+          return edges[0].to as Decision;
+        }
+      }
+      const moves = GEAR_SPEC[f.build].moves;
+      if (inp.down) return (heavy ? (moves[0] ?? 'cross') : (lowMove ?? 'jab')) as Decision;
+      if (heavy) return (moves[0] ?? 'cross') as Decision;
+      return 'jab';
+    };
+    // 输入缓冲消费：之前被拒的攻击，一能行动立刻出（缓冲 0.25s 内有效）
+    if (canAct && (f.bufLight > 0 || f.bufHeavy > 0)) {
+      const heavy = f.bufHeavy > 0 && !(f.bufLight > 0);
+      f.bufLight = 0;
+      f.bufHeavy = 0;
+      return atkKey(heavy);
+    }
+    // 输入缓冲写入：此刻出不了招就先记下
+    if (inp.light && !canAct) f.bufLight = 0.5;
+    if (inp.heavy && !canAct) f.bufHeavy = 0.5;
+    // 攻击优先（边沿触发），随后功能键，最后走位 —— ↓+J 是「下段攻击」不是「蹲下」
+    if (inp.counter && canAct) return 'counterStrike';
+    if (inp.light && canAct) return atkKey(false);
+    if (inp.heavy && canAct) return atkKey(true);
+    if (inp.roll && canAct) return 'roll';
+    if (inp.up && canAct) return 'jump';
+    if (inp.block) return 'block';
+    if (inp.down) return 'crouch';
+    if (oppRight ? inp.right : inp.left) return 'approach';
+    if (oppRight ? inp.left : inp.right) return 'retreat';
+    return 'wait';
+  };
+
   const decide = (f: Fighter, opp: Fighter | undefined): Decision => {
     if (!opp) return 'wait';
     const snap = snapshot(f, opp);
-
-    // 手动模式：左侧角色由键盘直接驱动，攻击受冷却限制、走位/格挡不受限
+    // ── 手动模式：玩家键位 → Decision ──
+    // 按键哲学（调研了 mortal-brainrot / SF2-JS / KOF 网页实现后的取舍）：
+    //   轻击/重击分离（J/K 与 Num1/Num2），S(↓)+攻击 = 下段/大招 —— KOF-lite，
+    //   不做 ↓↘→ 搓招（网页键盘搓招挫败感强，第一版用「按住下+重击」替代）；
+    //   连招 = 玩家在 hit-confirm 窗口（comboTimer>0）内**再按攻击键**才接下一式
+    //   （从连招图挑 hit 确认边）—— 手动斗士关掉 AI 的自动连招（见 6216 行的过滤）。
     if (opts.manual && fighters[0] === f) {
-      const canAct = f.cool <= 0;
-      const left = keys.has('KeyA') || keys.has('ArrowLeft');
-      const right = keys.has('KeyD') || keys.has('ArrowRight');
-      const oppRight = !opp || opp.x >= f.x;
-      if (keys.has('KeyU')) return 'block';
-      if (canAct && (keys.has('KeyW') || keys.has('ArrowUp'))) return 'jump';
-      if (keys.has('KeyS') || keys.has('ArrowDown')) return 'crouch';
-      if (canAct && keys.has('KeyL')) return 'roll';
-      if (canAct && keys.has('KeyJ')) return 'jab';
-      if (canAct && keys.has('KeyK')) return (GEAR_SPEC[f.build].moves[0] ?? 'cross') as Decision;
-      if (canAct && keys.has('Space')) return 'counterStrike';
-      if (oppRight ? right : left) return 'approach';
-      if (oppRight ? left : right) return 'retreat';
-      return 'wait';
+      const d = manualDecide(f, opp, {
+        left: keys.has('KeyA'), right: keys.has('KeyD'),
+        up: keys.has('KeyW'), down: keys.has('KeyS'),
+        block: keys.has('KeyU'),
+        // 按住即连发（由攻击后摇自然限频）—— 新手第一反应是按住不放；
+        // pending 边沿保留给连招触发（确认窗内的「再按一下」）
+        light: p1Light || keys.has('KeyJ'), heavy: p1Heavy || keys.has('KeyK'),
+        roll: p1Roll, counter: p1Counter,
+        dashT: p1DashT,
+      });
+      // pending 已消费（没消费的意图也已进输入缓冲）—— 一律清零防连发
+      p1Light = p1Heavy = p1Roll = p1Counter = false;
+      return d;
+    }
+    if (opts.manual2 && fighters[1] === f) {
+      const d = manualDecide(f, opp, {
+        left: keys.has('ArrowLeft'), right: keys.has('ArrowRight'),
+        up: keys.has('ArrowUp'), down: keys.has('ArrowDown'),
+        block: keys.has('Numpad3') || keys.has('Slash'),
+        light: p2Light || keys.has('Numpad1') || keys.has('Comma'),
+        heavy: p2Heavy || keys.has('Numpad2') || keys.has('Period'),
+        roll: p2Roll, counter: p2Counter,
+        dashT: p2DashT,
+      });
+      p2Light = p2Heavy = p2Roll = p2Counter = false;
+      return d;
     }
     if (externalController) {
       try {
@@ -4790,6 +5062,7 @@ export function initFightBand(opts: FightOptions = {}): void {
     if (atkOf(f, d)) {
       f.recentMoves.unshift({ k: d, t: elapsed });
       if (f.recentMoves.length > 4) f.recentMoves.length = 4;
+      f.lastUseAt[d] = elapsed;   // 探索保底（久未使用奖励）的输入
     }
 
     if (debugOptions.frames) {
@@ -4863,6 +5136,8 @@ export function initFightBand(opts: FightOptions = {}): void {
         setState(f, 'roll');
         f.cool = Math.max(f.cool, 0.3);
         f.invuln = 0.3;
+        // 英雄能力「残影」类：翻滚后蓄势窗，下一击有加成
+        if (abilityOf(f)?.dmg?.ambush) f.ambushT = 0.9;
         const o3 = fighters[f.partner];
         const d3 = o3 ? Math.abs(o3.x - f.x) : 99;
         const cornered3 = f.x <= f.minX + 52 || f.x >= f.maxX - 52;
@@ -5327,6 +5602,17 @@ export function initFightBand(opts: FightOptions = {}): void {
           const lethal = target.hp <= 0;
           popups.push({ x: p.x, y: p.y - 22, text: '-' + dmg, life: 0, max: 0.9, color: blocking ? '#6BA8D6' : '#E23B2E' });
           burstFx(p.kind === 'bolt' ? 'bolt' : 'shuriken', p.x, p.y, Math.sign(p.vx), blocking);
+          // 钉在身上：非格挡命中 → 插进身体跟着人走（不是穿模也不是凭空消失）
+          if (!blocking) {
+            stuckFx.push({
+              kind: p.kind,
+              target,
+              dx: p.x - tw.chest.x,
+              dy: Math.max(-14, Math.min(14, p.y - tw.chest.y)),
+              ang: Math.atan2(p.vy, p.vx) + (Math.random() - 0.5) * 0.5,
+              life: 0, max: 0.9,
+            });
+          }
           if (!blocking) {
             stats.hits++;
             target.flash = 1;
@@ -5346,6 +5632,10 @@ export function initFightBand(opts: FightOptions = {}): void {
       }
       return p.life < 1.2 && p.x > -40 && p.x < W + 40;
     });
+
+    // 钉在身上的投射物：跟人走、抖两下后淡出；目标倒地/死亡就摘掉
+    for (const s of stuckFx) s.life += dt;
+    stuckFx = stuckFx.filter((s) => s.life < s.max && !s.target.ragdoll && s.target.hp > 0);
 
     // 命中定格（hitstop）：人物瞬间冻结几帧，打击感来自这里
     if (hitstop > 0) {
@@ -5480,7 +5770,11 @@ export function initFightBand(opts: FightOptions = {}): void {
             f.clipDur = CLIPS.idle.dur;
             f.cool = rand(0.6, 1.4);
             f.stagger = 0;
-            applyRoster(f, ROSTER[Math.floor(random() * ROSTER.length)]);
+            // 随机挑战者：不重复上一位、也不是正在打的对面的镜像位 —— 老见同一个人很烦
+            let ni = Math.floor(random() * ROSTER.length);
+            if (ni === lastChallengerIdx) ni = (ni + 1 + Math.floor(random() * (ROSTER.length - 1))) % ROSTER.length;
+            lastChallengerIdx = ni;
+            applyRoster(f, ROSTER[ni]);
           } else {
             // 只是被击倒（hp>0）：躺一下撑地起身接着打，不换人、不回血
             f.ragdoll = null;
@@ -5511,6 +5805,11 @@ export function initFightBand(opts: FightOptions = {}): void {
       else f.blockT = 0;
       f.phaseT += dt;
       if (f.feintT > 0) f.feintT = Math.max(0, f.feintT - dt);
+      // 蓄势窗（英雄能力）计时
+      if (f.ambushT > 0) f.ambushT = Math.max(0, f.ambushT - dt);
+      // 手动输入缓冲衰减
+      if (f.bufLight > 0) f.bufLight = Math.max(0, f.bufLight - dt);
+      if (f.bufHeavy > 0) f.bufHeavy = Math.max(0, f.bufHeavy - dt);
 
       // 招架姿态：撑完还没被打中 = 赌输了 → 进入防御封锁（比普通格挡更长的硬直）
       if (f.parryT > 0) {
@@ -5552,7 +5851,9 @@ export function initFightBand(opts: FightOptions = {}): void {
         const oppPh = opp ? movePhase(opp.state) : null;
         const oppRec = !!oppPh && opp.clipDur > 0 && opp.clipT / opp.clipDur > oppPh.last + 0.05;
         const rush = oppRec || f.comboTimer > 0 || d > f.preferDist + 22;
-        if (f.state === 'approach' && d > f.preferDist && f.clipT < 3.5) {
+        // 手动模式：玩家自己决定何时停 —— 走到贴身为止（AI 止步于舒适距），
+        // 否则 approach 止步于 preferDist(~45px)，轻击（reach≈30px）永远够不着
+        if (f.state === 'approach' && d > (opts.manual && f === fighters[0] ? 20 : f.preferDist) && f.clipT < 3.5) {
           /*
            * 步法脉冲：试探期是「进几步 → 停半拍 → 再进」，不是匀速滑过去。
            * 停顿本身就是节奏；匀速前进看久了就是"两个人黏在一起平移"。
@@ -5560,8 +5861,10 @@ export function initFightBand(opts: FightOptions = {}): void {
           const pulse = f.phase === 'engagement'
             ? 1
             : Math.sin(f.phaseT * 7.5) > -0.15 ? 1 : 0.12;
-          f.x += f.facing * (rush ? 104 : 54) * pulse * dt;
-          f.walkPhase += dt * 1.9;
+          // 双击冲刺：手动斗士 dashT>0 时步频 ×2.2（AI 不受影响）
+          const dashMul = (opts.manual && f === fighters[0] && p1DashT > 0) || (opts.manual2 && f === fighters[1] && p2DashT > 0) ? 2.2 : 1;
+          f.x += f.facing * (rush ? 104 : 54) * pulse * dashMul * dt;
+          f.walkPhase += dt * 1.9 * dashMul;
           f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
         } else if (f.state === 'retreat' && f.clipT < f.clipDur) {
           // 后撤是短暂的规避动作：要撤得干脆，一脚退出对手射程。
@@ -5573,7 +5876,9 @@ export function initFightBand(opts: FightOptions = {}): void {
           f.pose = lerpPose(f.pose, walkPose(f.walkPhase), 1 - Math.exp(-dt * 22));
         } else {
           setState(f, 'idle');
-          f.cool = Math.max(f.cool, rand(0.12, 0.45));
+          // 停步冷却只给 AI（节奏感）；玩家松键就该立刻能动/能出招
+          const isM = (opts.manual && f === fighters[0]) || (opts.manual2 && f === fighters[1]);
+          if (!isM) f.cool = Math.max(f.cool, rand(0.12, 0.45));
         }
         // 限制在自己那半格场地内，不会跑出画面或穿过对手
         f.x = Math.max(f.minX, Math.min(f.maxX, f.x));
@@ -5675,6 +5980,18 @@ export function initFightBand(opts: FightOptions = {}): void {
           if (!f.bladeDraw && tipEff > 0) {
             f.bladeDraw = bladeGeometryFor(f, part, tipEff, h.sori ?? 0);
           }
+        }
+        // 赤焰武人（kitId 8）：挥招时余烬从刀/拳上散落 —— 不命中也有火的感觉
+        if (f.kitId === 8 && random() < 0.35) {
+          const w8 = place(f).world;
+          const emberSrc = w8.handF;
+          sparks.push({
+            x: emberSrc.x + rand(-3, 3), y: emberSrc.y + rand(-3, 3),
+            vx: rand(-18, 18), vy: rand(-60, -20),
+            life: 0, max: rand(0.25, 0.5),
+            color: random() < 0.5 ? '#FF7A2E' : '#FFB13D',
+            size: rand(1.2, 2.2), kind: 'dust',
+          });
         }
 
         for (let hi = 0; hi < atk.hits.length; hi++) {
@@ -5815,6 +6132,8 @@ export function initFightBand(opts: FightOptions = {}): void {
             opp.counterWindow = Math.max(opp.counterWindow ?? 0, PARRY_DEF.counterWindow);
             opp.parryT = 0; // 用掉这次招架
             opp.blockT = 999;
+            // 英雄能力「燕返」类：招架成功 → 蓄势窗，反击那一击有加成
+            if (abilityOf(opp)?.dmg?.ambush) opp.ambushT = 1.0;
             f.stun = Math.max(f.stun, PARRY_DEF.stun);
             f.pendingCombo = null;
             f.comboSteps = null;
@@ -5839,7 +6158,26 @@ export function initFightBand(opts: FightOptions = {}): void {
           const zone = swept.zone;
           const zoneMul = zone === 'head' ? 1.15 : zone === 'leg' ? 0.85 : 1;
           const mul = (guarding ? (meta0?.breakGuard ? 0.62 : 0.34) : broken ? 1.6 : 1) * (isCounter ? 1.35 : 1) * zoneMul;
-          const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * mul);
+          /*
+           * 英雄专属能力（HERO_ABILITY）：攻击方 dmg 修正 + 防守方 taken 修正。
+           * 触发时弹黄字 tag，让「这是谁的什么能力」在画面上直接可读。
+           */
+          const abAtk = abilityOf(f);
+          const abDef = abilityOf(opp);
+          let abMul = 1;
+          let abTag = '';
+          const abDist = Math.abs(opp.x - f.x);
+          if (abAtk?.dmg) {
+            const d0 = abAtk.dmg;
+            if (d0.lowHp && f.hp > 0 && f.hp <= d0.lowHp.below) { abMul *= d0.lowHp.mul; abTag = d0.lowHp.tag; }
+            if (d0.range && abDist > d0.range.beyond) { abMul *= d0.range.mul; abTag = d0.range.tag; }
+            if (d0.combo && f.comboTimer > 0) { abMul *= d0.combo.mul; abTag = d0.combo.tag; }
+            if (d0.ambush && f.ambushT > 0) { abMul *= d0.ambush.mul; abTag = d0.ambush.tag; f.ambushT = 0; }
+            if (d0.crit && random() < d0.crit.chance) { abMul *= d0.crit.mul; abTag = d0.crit.tag; }
+          }
+          if (abDef?.taken?.dmgMul) abMul *= abDef.taken.dmgMul;
+          const dmg = Math.round(rand(h.dmg[0], h.dmg[1]) * mul * abMul);
+          if (abTag) popups.push({ x: at.x, y: at.y - 52, text: abTag, life: 0, max: 0.7, color: '#FFD24A' });
           if (guardWrong) {
             // 挡错高度 = 直接吃满伤害，必须给明确反馈
             popups.push({
@@ -5856,6 +6194,21 @@ export function initFightBand(opts: FightOptions = {}): void {
           else if (isTrade) popups.push({ x: at.x, y: at.y - 44, text: 'TRADE', life: 0, max: 0.6, color: '#C9C9C9' });
           // 每招专属打击特效 + 流派配色（同一招不同流派颜色不同）
           burstFx(f.state, at.x, at.y, f.facing, guarding, 0, f.skin.trim);
+          // 赤焰武人（kitId 8）：命中炸火花 —— 火系招牌，招招带焚烧感
+          if (f.kitId === 8) {
+            for (let i = 0; i < (guarding ? 7 : 15); i++) {
+              const a = rand(-Math.PI, Math.PI);
+              const sp = rand(30, 170);
+              sparks.push({
+                x: at.x + rand(-4, 4), y: at.y + rand(-4, 4),
+                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 80,
+                life: 0, max: rand(0.28, 0.6),
+                color: ['#FF7A2E', '#FFB13D', '#E23B2E'][i % 3],
+                size: rand(1.6, 3.1), kind: 'dust',
+              });
+            }
+            impactRings.push({ x: at.x, y: at.y, r0: 3, r1: guarding ? 18 : 30, life: 0, max: 0.24, color: 'rgba(255,122,46,0.75)', wide: 2 });
+          }
 
           if (guarding) {
             stats.blocks++;
@@ -5865,8 +6218,10 @@ export function initFightBand(opts: FightOptions = {}): void {
             f.readsLow *= 0.99;
             f.readsHigh *= 0.99;
             noteOpp(f, opp.guardLow ? 'blockLow' : 'blockHigh');
-            // 格挡扣架势：重招、破防招扣得多
-            const cost = (meta0?.breakGuard ? 80 : 54) * (h.knock > 300 ? 1.4 : 1);
+            // 格挡扣架势：重招、破防招扣得多；英雄能力修正（武僧破阵 ×1.6 / 盾卫铁壁 ×0.55）
+            const cost = ((meta0?.breakGuard ? 80 : 54) * (h.knock > 300 ? 1.4 : 1))
+              * (abilityOf(f)?.guardDmgMul ?? 1)
+              * (abDef?.taken?.guardCostMul ?? 1);
             opp.guard -= cost;
             opp.guardDelay = 1.6; // 压制窗口：这段时间内再打在盾上会继续削架势
             const broke = opp.guard <= 0;
@@ -5892,6 +6247,14 @@ export function initFightBand(opts: FightOptions = {}): void {
           }
 
           opp.flash = 1;
+          // 英雄能力「醉步」类：概率整击闪避 —— 不掉血、不硬直、不击倒，仍被带一小步
+          if (abDef?.taken?.dodge && random() < abDef.taken.dodge.chance) {
+            popups.push({ x: at.x, y: at.y - 40, text: abDef.taken.dodge.tag, life: 0, max: 0.75, color: '#B9E48A' });
+            opp.sway = 0.5;
+            opp.kb = f.facing * 55;
+            spawn(at.x, at.y, 'rgba(185,228,138,0.8)', 'dust', 5, 0.7);
+            continue;
+          }
           // 挤压量按「伤害 + 击退」算：轻拳轻微一缩，重锤整个被压扁
           opp.squash = Math.min(1, 0.32 + dmg / 42 + (h.knock > 320 ? 0.28 : 0));
           opp.hitShake = 1;
@@ -5904,7 +6267,8 @@ export function initFightBand(opts: FightOptions = {}): void {
            * 让重招在连段里第一次值钱、第二次开始不值钱。
            */
           const kdRecent = elapsed - f.lastKdAt < 2.5;
-          const bigHit = h.knock > 320 + (kdRecent ? 130 : 0);
+          // 英雄能力「重锤/缠锁」：击倒门槛降低，重武器真的能把人抡倒
+          const bigHit = h.knock > 320 + (kdRecent ? 130 : 0) - (abilityOf(f)?.kdBonus ?? 0);
           if (bigHit) f.lastKdAt = elapsed;
           opp.kb = f.facing * (h.knock + (bigHit ? 170 : 0));
           if (bigHit) opp.knockdown = true;
@@ -5993,8 +6357,26 @@ export function initFightBand(opts: FightOptions = {}): void {
       }
 
       /* --- 连招取消窗口：命中后过了取消点就立刻接下一段，收招被"取消"掉 --- */
-      // 有连招图的英雄：到取消点时按「图 + 确认结果 + 帧窗口 + 距离」查一次能接什么
-      if (atk && !opts.demo && comboGraphOf(f) && !f.pendingCombo && f.comboTried !== f.state) {
+      // 有连招图的英雄：到取消点时按「图 + 确认结果 + 帧窗口 + 距离」查一次能接什么。
+      // 手动斗士的连招由**玩家按键**驱动：攻击中按 J/K（确认窗内）→ 立即挂
+      // pendingCombo，走下面同一条取消点执行管线；不按就正常收招。
+      const isManualFighter = (opts.manual && f === fighters[0]) || (opts.manual2 && f === fighters[1]);
+      if (atk && isManualFighter && !f.pendingCombo && f.comboTimer > 0) {
+        const pressLight = f === fighters[0] ? p1Light : p2Light;
+        const pressHeavy = f === fighters[0] ? p1Heavy : p2Heavy;
+        if (pressLight || pressHeavy) {
+          if (f === fighters[0]) { p1Light = false; p1Heavy = false; }
+          else { p2Light = false; p2Heavy = false; }
+          const edges = (comboGraphOf(f) ?? []).filter(
+            (e) => e.from === f.state && (e.confirm === 'hit' || e.confirm === 'block'),
+          );
+          if (edges.length) {
+            f.pendingCombo = edges[Math.floor(random() * edges.length)].to;
+            f.cool = 0;
+            popups.push({ x: f.x, y: groundY() - 96 * f.scale, text: 'COMBO', life: 0, max: 0.5, color: '#FFD24A' });
+          }
+        }
+      } else if (atk && !opts.demo && !isManualFighter && comboGraphOf(f) && !f.pendingCombo && f.comboTried !== f.state) {
         f.comboTried = f.state;
         const nx = pickComboEdge(f, opp, prog);
         if (nx) {
@@ -6120,8 +6502,10 @@ export function initFightBand(opts: FightOptions = {}): void {
         }
         f.cool -= dt;
         f.lastDecision += dt;
-        // 站着时反应快，移动/举盾中反应慢一点（避免抽搐式反复横跳）
-        const gap = f.state === 'idle' ? 0.14 : 0.24;
+        // 站着时反应快，移动/举盾中反应慢一点（避免抽搐式反复横跳）。
+        // 手动斗士每帧决策：玩家按方向到看见转向不能隔 0.24s，那叫"操作不了"
+        const isManualF = (opts.manual && f === fighters[0]) || (opts.manual2 && f === fighters[1]);
+        const gap = isManualF ? 0.02 : f.state === 'idle' ? 0.14 : 0.24;
         // 出招冷却只限制"出招"，不限制"走位/格挡"。
         if (f.stun <= 0 && f.lastDecision > gap) {
           f.lastDecision = 0;
@@ -6283,6 +6667,10 @@ export function initFightBand(opts: FightOptions = {}): void {
 
     // 位置约束：不许穿模
     for (const f of fighters) keepDistance(f, dt);
+
+    // 手动模式计时：冲刺窗衰减（攻击输入走 pending 标志，不随帧清空 —— 节流决策也能收到）
+    p1DashT = Math.max(0, p1DashT - dt);
+    p2DashT = Math.max(0, p2DashT - dt);
 
     // 演示模式定格（逐帧检查）时，特效也一并冻结，方便截图对比
     if (!(opts.demo && demoPaused)) {
@@ -7171,6 +7559,42 @@ export function initFightBand(opts: FightOptions = {}): void {
         ctx.closePath();
         ctx.fill();
       } else if (gear === 'monk') {
+        // 袈裟：从远肩斜披到近腰的姜黄色宽带 + 肩口搭扣 + 念珠领 —— 先像武僧再谈别的
+        const shF = get('shoulderF');
+        const shB2 = get('shoulderB');
+        const hipF2 = get('hipF');
+        const sashC = '#D9822B';
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(shB2.x, shB2.y - 1 * k);
+        ctx.quadraticCurveTo(
+          (shB2.x + hipF2.x) / 2 - facing * 3 * k, (shB2.y + hipF2.y) / 2,
+          hipF2.x + facing * 1 * k, hipF2.y + 2 * k,
+        );
+        ctx.lineTo(hipF2.x + facing * 4.5 * k, hipF2.y + 4 * k);
+        ctx.quadraticCurveTo(
+          (shB2.x + hipF2.x) / 2 - facing * 1 * k, (shB2.y + hipF2.y) / 2 + 5 * k,
+          shB2.x + facing * 5 * k, shB2.y + 3.5 * k,
+        );
+        ctx.closePath();
+        ctx.fillStyle = sashC;
+        ctx.fill();
+        ctx.strokeStyle = outline; ctx.lineWidth = 1.2 * k; ctx.stroke();
+        // 袈裟边纹（三道明黄细线，一眼是袈裟不是背带）
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(shB2.x - facing * i * 2.2 * k, shB2.y + 1.5 * k + i * 0.8 * k);
+          ctx.quadraticCurveTo(
+            (shB2.x + hipF2.x) / 2 - facing * (3 + i * 1.6) * k, (shB2.y + hipF2.y) / 2 + i * 2.2 * k,
+            hipF2.x + facing * (1 - i * 0.8) * k, hipF2.y + 1.5 * k + i * 1.4 * k,
+          );
+          ctx.strokeStyle = '#F0C060';
+          ctx.lineWidth = 0.9 * k;
+          ctx.stroke();
+        }
+        // 肩口搭扣
+        disc({ x: shF.x, y: shF.y + 1 * k, z: 0 }, 1.8 * k, '#C9A227');
+        ctx.restore();
         // 护额布条 + 耳侧短发际（头型沿用 headShape，不覆盖五官）
         pad({ x: head.x, y: head.y - L.headR * 0.38 * k, z: 0 }, 0, L.headR * 1.0 * k, 2.2 * k, trim);
         ctx.strokeStyle = trim;
@@ -7222,6 +7646,45 @@ export function initFightBand(opts: FightOptions = {}): void {
         ctx.fill();
         ctx.fillStyle = '#C9A227';
         ctx.fillRect(head.x - L.headR * 0.55 * k, head.y - L.headR * 0.34 * k, L.headR * 1.1 * k, L.headR * 0.26 * k);
+        // 忍者神龟风：彩色眼罩带（横过眼部，用流派 trim 色）+ 脑后两条飘带
+        ctx.fillStyle = trim;
+        ctx.fillRect(head.x - facing * L.headR * 1.02 * k, head.y - L.headR * 0.42 * k, L.headR * 2.04 * k, L.headR * 0.34 * k);
+        for (const tb of [-1, 1]) {
+          const bx = head.x - facing * L.headR * 0.95 * k;
+          const by = head.y - L.headR * 0.3 * k;
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.quadraticCurveTo(
+            bx - facing * 6 * k, by + tb * 2 * k - sway * 4 * k,
+            bx - facing * (10 + tb * 1.5) * k, by + tb * 4 * k + sway * 6 * k,
+          );
+          ctx.strokeStyle = trim;
+          ctx.lineWidth = 1.7 * k;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+        // 背龟壳：从背后探出的椭圆壳 + 甲纹（画在躯干后侧，偏身后）
+        const chestN = get('chest');
+        const shellX = chestN.x - facing * 7.5 * k;
+        const shellY = chestN.y + 2 * k;
+        ctx.beginPath();
+        ctx.ellipse(shellX, shellY, 8.5 * k, 10 * k, -facing * 0.12, 0, TAU);
+        ctx.fillStyle = '#7A5B2E';
+        ctx.fill();
+        ctx.strokeStyle = outline; ctx.lineWidth = 1.4 * k; ctx.stroke();
+        // 甲纹：中央竖线 + 两道横弧
+        ctx.beginPath();
+        ctx.moveTo(shellX, shellY - 9 * k);
+        ctx.lineTo(shellX, shellY + 9 * k);
+        ctx.strokeStyle = '#5C451F';
+        ctx.lineWidth = 1.1 * k;
+        ctx.stroke();
+        for (const vy of [-4, 1, 6]) {
+          ctx.beginPath();
+          ctx.moveTo(shellX - 6.5 * k, shellY + vy * k);
+          ctx.quadraticCurveTo(shellX, shellY + (vy + 1.5) * k, shellX + 6.5 * k, shellY + vy * k);
+          ctx.stroke();
+        }
       } else if (gear === 'drunk') {
         // 歪戴斗笠（旋转 12°）+ 红鼻头（醉态剪影）
         ctx.save();
@@ -7597,6 +8060,18 @@ export function initFightBand(opts: FightOptions = {}): void {
         }
       });
 
+      /* ── 手持武器（各流派）：角度/长度优先用判定层 f.bladeDraw 那一份，
+         没有攻击几何就沿前臂画常驻持械 —— 斧/锤/枪/弓/弩/盾/双刀/手里剑/链柄
+         全部进画面。剑客的鞘/拔刀精绘在上方专属分支；机关臂有自己的套管绘制。 ── */
+      if (gear !== 'swordsman' && gear !== 'puppeteer') {
+        drawHeldWeapon(
+          ctx, gear,
+          { handF: get('handF'), elbowF: get('elbowF'), handB: get('handB'), elbowB: get('elbowB') },
+          facing, k, OUTLINE,
+          armed && blade ? blade : undefined,
+        );
+      }
+
       /* --- 布片动态件（L2 柔体链：链管弯曲，这里只管宽度轮廓与分片） --- */
       if (cloth && spec.cloth && Number.isFinite(cloth.nodes[cloth.nodes.length - 1]?.x)) {
         const nEnd = cloth.spec.nodes;
@@ -7606,8 +8081,10 @@ export function initFightBand(opts: FightOptions = {}): void {
           cape2: [3, 4], apron: [5, 6.5], hoodTail: [2.5, 1.5], shoulderCape: [3.5, 2],
           haori: [6, 7], kilt: [4, 2.5], coat: [6, 5.5], sash: [2.5, 2],
         };
-        const [w0, w1] = W[spec.cloth] ?? [4, 3];
-        const tint = spec.cloth === 'apron' ? '#8B5E3C' : trim;
+        const [w0, w1] = gear === 'monk' && spec.cloth === 'sash'
+          ? [6.5, 9]   // 武僧：斜披的袈裟下摆，比普通腰带宽得多
+          : (W[spec.cloth] ?? [4, 3]);
+        const tint = spec.cloth === 'apron' ? '#8B5E3C' : gear === 'monk' ? '#D9822B' : trim;
         const splits = spec.cloth === 'cape2' || spec.cloth === 'haori' ? [-1, 1] : [0];
         for (const s of splits) {
           drawRibbon(ctx, cloth, tint, 1, [w0 * k, w1 * k], s * 2.2 * k);
@@ -7650,22 +8127,36 @@ export function initFightBand(opts: FightOptions = {}): void {
           ctx.closePath();
           ctx.fill();
         } else if (spec.trinket === 'gourd') {
-          // 酒葫芦：钟摆物理挂腰侧，两圆叠成葫芦形 + 系绳
+          // 大酒葫芦：钟摆物理挂腰侧，两圆叠成葫芦形 + 系绳 + 封口红布
           const a = { x: bcx, y: bcy };
+          ctx.strokeStyle = '#8B5E3C';
+          ctx.lineWidth = 1.6 * k;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(trinket.x, trinket.y - 7 * k);
+          ctx.stroke();
+          // 葫芦身（上球小、下球大，酒坛量级）
+          disc({ x: trinket.x, y: trinket.y - 4.5 * k, z: 0 }, 3.2 * k, '#B08D5A');
+          disc({ x: trinket.x, y: trinket.y + 2.5 * k, z: 0 }, 4.8 * k, '#B08D5A');
+          ctx.strokeStyle = outline;
+          ctx.lineWidth = 1 * k;
+          ctx.beginPath();
+          ctx.arc(trinket.x, trinket.y + 2.5 * k, 4.8 * k, 0, TAU);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(trinket.x, trinket.y - 4.5 * k, 3.2 * k, 0, TAU);
+          ctx.stroke();
+          // 束腰箍 + 封口红布
           ctx.strokeStyle = '#8B5E3C';
           ctx.lineWidth = 1.4 * k;
           ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(trinket.x, trinket.y - 5 * k);
+          ctx.moveTo(trinket.x - 3.4 * k, trinket.y - 1 * k);
+          ctx.lineTo(trinket.x + 3.4 * k, trinket.y - 1 * k);
           ctx.stroke();
-          disc({ x: trinket.x, y: trinket.y - 3 * k, z: 0 }, 2.2 * k, '#B08D5A');
-          disc({ x: trinket.x, y: trinket.y + 1.5 * k, z: 0 }, 3.0 * k, '#B08D5A');
-          ctx.strokeStyle = '#8B5E3C';
-          ctx.lineWidth = 1.0 * k;
+          ctx.fillStyle = '#B03A2E';
           ctx.beginPath();
-          ctx.moveTo(trinket.x - 3 * k, trinket.y + 1.5 * k);
-          ctx.lineTo(trinket.x + 3 * k, trinket.y + 1.5 * k);
-          ctx.stroke();
+          ctx.arc(trinket.x, trinket.y - 8 * k, 1.5 * k, 0, TAU);
+          ctx.fill();
         } else if (spec.trinket === 'tassel') {
           // 腰带尾 / 枪缨的通用短流苏
           ctx.strokeStyle = '#C9A227';
@@ -7873,12 +8364,21 @@ export function initFightBand(opts: FightOptions = {}): void {
     }
     ctx.globalAlpha = 1;
 
-    // 投射物：弩箭（杆+箭头）与飞镖（旋转星）
+    // 投射物：箭（杆+箭头+尾羽）与飞镖（旋转星）
     for (const p of projectiles) {
       ctx.save();
       ctx.translate(p.x, p.y);
       if (p.kind === 'bolt') {
         ctx.rotate(Math.atan2(p.vy, p.vx));
+        // 尾羽（两片斜羽，一眼看出是箭不是钉子）
+        ctx.strokeStyle = '#D8DEE6';
+        ctx.lineWidth = 1.6;
+        for (const s of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(-9, 0);
+          ctx.lineTo(-13, s * 3.4);
+          ctx.stroke();
+        }
         ctx.strokeStyle = '#8B5E3C';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -7887,7 +8387,7 @@ export function initFightBand(opts: FightOptions = {}): void {
         ctx.stroke();
         ctx.fillStyle = '#E8EEF7';
         ctx.beginPath();
-        ctx.moveTo(6, 0);
+        ctx.moveTo(7, 0);
         ctx.lineTo(0, -2.5);
         ctx.lineTo(0, 2.5);
         ctx.closePath();
@@ -7909,6 +8409,46 @@ export function initFightBand(opts: FightOptions = {}): void {
       }
       ctx.restore();
     }
+
+    // 钉在身上的箭/镖：跟随目标胸口，命中瞬间抖两下、随后淡出
+    for (const s of stuckFx) {
+      const tw = place(s.target).world;
+      const wob = Math.sin(s.life * 34) * Math.max(0, 1 - s.life / 0.3) * 0.09;
+      ctx.save();
+      ctx.translate(tw.chest.x + s.dx, tw.chest.y + s.dy);
+      ctx.rotate(s.ang + wob);
+      ctx.globalAlpha = Math.max(0, 1 - s.life / s.max);
+      if (s.kind === 'bolt') {
+        // 插进身体的箭：只露尾杆 + 尾羽（箭头在体内）
+        ctx.strokeStyle = '#8B5E3C';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(2, 0);
+        ctx.lineTo(-10, 0);
+        ctx.stroke();
+        ctx.strokeStyle = '#D8DEE6';
+        ctx.lineWidth = 1.6;
+        for (const sd of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(-10, 0);
+          ctx.lineTo(-14, sd * 3.4);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#C9A227';
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * TAU;
+          const rr = i % 2 === 0 ? 4.6 : 1.8;
+          const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
 
     // 打击线（speed line）：短线沿放射方向被拉走并淡出，速度感来自这里
     for (const l of speedLines) {
@@ -8079,7 +8619,7 @@ export function initFightBand(opts: FightOptions = {}): void {
             // 体积本体：**空心套袖** —— 只填很淡的一层，再描上下两条边界。
             // 之前是实心半透明粗线，正好把刀盖住，根本看不出判定和武器是否重合。
             ctx.lineWidth = Math.max(1.5, vol.radius * 2);
-            ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.16)');
+            ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.28)');
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -8100,7 +8640,7 @@ export function initFightBand(opts: FightOptions = {}): void {
                 else ctx.lineTo(pts[i].x + nx, pts[i].y + ny);
               }
               ctx.strokeStyle = color;
-              ctx.lineWidth = 1.1;
+              ctx.lineWidth = 1.8;
               ctx.stroke();
             }
             // 中轴：细白线。判定如果和武器贴合，这条线就应该压在中轴/刀刃上
@@ -8130,9 +8670,9 @@ export function initFightBand(opts: FightOptions = {}): void {
           // 受击框：任何状态都画（始终存在，这是「人有身体」）
           for (const hp of buildHurtParts(f)) {
             const col =
-              hp.zone === 'head' ? 'rgba(120,230,140,0.34)' :
-              hp.zone === 'leg' ? 'rgba(120,190,255,0.30)' :
-              'rgba(110,220,150,0.26)';
+              hp.zone === 'head' ? 'rgba(120,230,140,0.55)' :
+              hp.zone === 'leg' ? 'rgba(120,190,255,0.5)' :
+              'rgba(110,220,150,0.45)';
             drawVol(hp.vol, col);
           }
 
@@ -8141,9 +8681,9 @@ export function initFightBand(opts: FightOptions = {}): void {
           if (atkD) {
             for (let vi = 0; vi < f.hitVols.length; vi++) {
               const pv = f.hitPrevVols[vi];
-              if (pv) drawVol(pv, 'rgba(255,214,90,0.45)', [4, 4]);
+              if (pv) drawVol(pv, 'rgba(255,214,90,0.65)', [4, 4]);
               const cv = f.hitVols[vi];
-              if (cv) drawVol(cv, 'rgba(255,70,60,0.42)');
+              if (cv) drawVol(cv, 'rgba(255,70,60,0.6)');
             }
           }
 
@@ -8554,6 +9094,18 @@ export function initFightBand(opts: FightOptions = {}): void {
       })),
     /** 引擎内部计数器：大规模检测用（出招/命中/挥空/格挡/破防/倒地/真阵亡） */
     stats: () => ({ ...stats }),
+    /** 姿态诊断：每个斗士的 state + 两腿四角 —— 查「单腿」（两腿重叠）用 */
+    debugPose: () =>
+      fighters.map((f) => ({
+        state: f.state,
+        kitId: f.kitId,
+        legUB: Number(f.pose.legUB.toFixed(2)),
+        legLB: Number(f.pose.legLB.toFixed(2)),
+        legUF: Number(f.pose.legUF.toFixed(2)),
+        legLF: Number(f.pose.legLF.toFixed(2)),
+      })),
+    /** 英雄专属能力总表（图鉴用）：kitId → { name, desc } */
+    abilities: () => Object.fromEntries(Object.entries(HERO_ABILITY).map(([k, v]) => [k, { name: v.name, desc: v.desc }])),
     /** 决策轨迹（observation + action）：行为克隆的训练数据 */
     trace: () => trace,
     traceClear: () => { trace.length = 0; },
@@ -8587,6 +9139,7 @@ export function initFightBand(opts: FightOptions = {}): void {
       fighters = [];
       sparks = [];
       popups = [];
+      stuckFx = [];
       impactRings = [];
       speedLines = [];
       projectiles = [];
@@ -8666,8 +9219,11 @@ export function initFightBand(opts: FightOptions = {}): void {
         if (opts.demo) startDemoEntry(demoIdx); // 换英雄后按新体型/武器重排距离
         return r.name;
       },
-      /** 当前 roster（名字 + 流派），便于外部列出 */
-      roster: () => ROSTER.map((r, i) => ({ i, name: r.name, build: r.build })),
+      /** 当前 roster（名字 + 流派 + 专属能力），便于外部列出 */
+      roster: () => ROSTER.map((r, i) => ({
+        i, name: r.name, build: r.build,
+        ability: HERO_ABILITY[i] ? { name: HERO_ABILITY[i].name, desc: HERO_ABILITY[i].desc } : null,
+      })),
       /** 定格状态下手动触发一次当前招式的命中特效（配合 seek 检查特效用） */
       fx: () => {
         const a = fighters[0];

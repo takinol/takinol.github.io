@@ -7,34 +7,37 @@
 import { P, type HeroKit } from '../types';
 
 /** 架势（本英雄起手/收招的基准姿态） */
-const GUARD = P({ lean: 0.05, armUB: 0.2, armLB: 0.35, armUF: -0.15, armLF: 0.3, legUB: -0.12, legUF: 0.12, legLF: 0.05 });
+const GUARD = P({ lean: 0.05, armUB: 0.2, armLB: 0.35, armUF: -0.15, armLF: 0.3, legUB: -0.12, legUF: 0.12, legLF: 0 });
 export const KIT: HeroKit = {
   id: 4,
   name: '双刃影客',
   build: 'dagger',
   atks: {
+    /* 双刃影客的拳脚全都不重，但快 —— 连刃链的起手 */
     jab: {
       part: 'handF',
       hits: [
-        { at: 0.48, dmg: [7, 12], reach: 1, knock: 150 },
+        { at: 0.42, dmg: [5, 8], reach: 1, knock: 120, chase: 6 },
       ],
-      hitstop: 0.045,
+      hitstop: 0.04,
       react: 'light',
+      stepIn: 14,
     },
     cross: {
       part: 'handB',
       hits: [
-        { at: 0.54, dmg: [12, 19], reach: 1.05, knock: 230 },
+        { at: 0.48, dmg: [9, 15], reach: 1.05, knock: 200 },
       ],
-      hitstop: 0.06,
-      react: 'heavy',
+      hitstop: 0.05,
+      react: 'light',
+      stepIn: 12,
     },
     hook: {
       part: 'handF',
       hits: [
-        { at: 0.54, dmg: [13, 20], reach: 1.02, knock: 210 },
+        { at: 0.46, dmg: [9, 15], reach: 1.02, knock: 180 },
       ],
-      hitstop: 0.06,
+      hitstop: 0.05,
       react: 'light',
     },
     uppercut: {
@@ -99,15 +102,16 @@ export const KIT: HeroKit = {
       forward: 120,
       far: true,
     },
+    /* 连刃主力：双匕首交替二连斩，全游戏最快的武器招（0.52s 完整出收） */
     slash: {
       part: 'handF',
       hits: [
-        { at: 0.38, dmg: [8, 13], reach: 1.1, knock: 120, tip: 11, w: 4, act: 0.14, chase: 34 },
-        { at: 0.56, dmg: [10, 16], reach: 1.1, knock: 200, part: 'handB', tip: 11, w: 4, act: 0.14 },
+        { at: 0.28, dmg: [8, 13], reach: 1.1, knock: 120, tip: 11, w: 4, act: 0.14, chase: 34 },
+        { at: 0.46, dmg: [10, 16], reach: 1.1, knock: 200, part: 'handB', tip: 11, w: 4, act: 0.14 },
       ],
       hitstop: 0.05,
       react: 'light',
-      forward: 60,
+      lunge: { startup: 4, active: 14, recovery: 0 },
       close: true,
     },
     knee: {
@@ -120,11 +124,12 @@ export const KIT: HeroKit = {
       forward: 60,
       close: true,
     },
+    /* 收尾重击：腾空剪刀双踢，第二段（后脚）才是真正的伤害 */
     scissorKick: {
       part: 'footF',
       hits: [
         { at: 0.38, dmg: [9, 15], reach: 1.2, knock: 120, chase: 40 },
-        { at: 0.58, dmg: [12, 19], reach: 1.2, knock: 260, part: 'footB' },
+        { at: 0.58, dmg: [14, 22], reach: 1.2, knock: 320, part: 'footB' },
       ],
       hitstop: 0.06,
       react: 'heavy',
@@ -132,139 +137,162 @@ export const KIT: HeroKit = {
       far: true,
     },
   },
+  /**
+   * 连招图（双刃影客）—— 主题：连刃。
+   * 单发都不重，靠 jab→cross→slash 的快速交替堆伤害，slash 命中后
+   * 高权重确认接 hook/再 slash，最后 scissorKick 收尾。被挡立刻收刀就跑。
+   */
+  combo: [
+    // 连刃长链：命中确认权重高
+    { from: 'jab', to: 'cross', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 3 },
+    { from: 'jab', to: 'slash', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 2 },
+    { from: 'cross', to: 'slash', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 3 },
+    { from: 'cross', to: 'hook', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 1 },
+    { from: 'slash', to: 'hook', confirm: 'hit', window: [0.55, 0.95], range: 'close', weight: 2 },
+    { from: 'slash', to: 'slash', confirm: 'hit', window: [0.55, 0.95], range: 'close', weight: 2 },
+    { from: 'slash', to: 'scissorKick', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 2 },
+    { from: 'hook', to: 'scissorKick', confirm: 'hit', window: [0.55, 0.95], range: 'in', weight: 2 },
+    { from: 'scissorKick', to: 'retreat', confirm: 'hit', window: [0.55, 0.95], weight: 2 },
+    // 被挡：轻武器不敢耗，收招就跑
+    { from: 'slash', to: 'retreat', confirm: 'block', window: [0.55, 0.95], weight: 2 },
+    { from: 'scissorKick', to: 'retreat', confirm: 'block', window: [0.55, 0.95], weight: 3 },
+    // 打康：双刃起手最快，截击就是一整条链
+    { from: 'jab', to: 'slash', confirm: 'counter', window: [0.6, 0.95], weight: 3 },
+    { from: 'cross', to: 'scissorKick', confirm: 'counter', window: [0.6, 0.95], weight: 2 },
+  ],
   clips: {
     jab: {
-      dur: 0.4, loop: false,
+      dur: 0.38, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
-        { t: 0.26, pose: P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2, armUF: 0.72, armLF: 2.15, legUB: -0.28, legUF: 0.32, legLF: 0.1 }) },
-        { t: 0.48, pose: P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, legUB: -0.42, legUF: 0.5, legLF: 0.04 }) },
-        { t: 0.62, pose: P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, legUB: -0.42, legUF: 0.5, legLF: 0.04 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
+        { t: 0.24, pose: P({ lean: 0.1, head: -0.06, armUB: 1.05, armLB: 2, armUF: 0.72, armLF: 2.15, legUB: -0.28, legUF: 0.32, legLF: 0 }) },
+        { t: 0.42, pose: P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, legUB: -0.42, legUF: 0.5, legLF: 0 }) },
+        { t: 0.56, pose: P({ lean: 0.3, head: -0.02, armUB: 0.9, armLB: 2.05, armUF: 1.62, legUB: -0.42, legUF: 0.5, legLF: 0 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     cross: {
-      dur: 0.66, loop: false,
+      dur: 0.5, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
-        { t: 0.3, pose: P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUF: 1, armLF: 1.9, legUB: -0.18, legUF: 0.26, yaw: -0.32, armUBD: -0.45, armUFD: 0.25 }) },
-        { t: 0.44, pose: P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUF: 1, armLF: 1.9, legUB: -0.18, legUF: 0.26, yaw: -0.32, armUBD: -0.45, armUFD: 0.25 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
+        { t: 0.22, pose: P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUF: 1, armLF: 1.9, legUB: -0.18, legUF: 0.26, yaw: -0.32, armUBD: -0.45, armUFD: 0.25 }) },
+        { t: 0.32, pose: P({ lean: -0.14, head: -0.1, armUB: -1.05, armLB: 1.75, armUF: 1, armLF: 1.9, legUB: -0.18, legUF: 0.26, yaw: -0.32, armUBD: -0.45, armUFD: 0.25 }) },
+        { t: 0.48, pose: P({ lean: 0.32, head: 0.08, armUB: 1.72, armLB: 0.02, armUF: 0.42, armLF: 1.98, legUB: -0.52, legUF: 0.58, yaw: 0.34, armUBD: -0.12, armUFD: 0.3 }) },
         { t: 0.62, pose: P({ lean: 0.32, head: 0.08, armUB: 1.72, armLB: 0.02, armUF: 0.42, armLF: 1.98, legUB: -0.52, legUF: 0.58, yaw: 0.34, armUBD: -0.12, armUFD: 0.3 }) },
-        { t: 0.76, pose: P({ lean: 0.32, head: 0.08, armUB: 1.72, armLB: 0.02, armUF: 0.42, armLF: 1.98, legUB: -0.52, legUF: 0.58, yaw: 0.34, armUBD: -0.12, armUFD: 0.3 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     hook: {
-      dur: 0.54, loop: false,
+      dur: 0.46, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
-        { t: 0.3, pose: P({ lean: -0.1, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: -0.35, armLF: 1.1, legUB: -0.24, legUF: 0.3, yaw: -0.2, armUFD: -1 }) },
-        { t: 0.54, pose: P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.62, armLF: 1.05, legUB: -0.46, legUF: 0.5, yaw: 0.26, armUFD: 0.45, armLFD: 0.2 }) },
-        { t: 0.7, pose: P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.62, armLF: 1.05, legUB: -0.46, legUF: 0.5, yaw: 0.26, armUFD: 0.45, armLFD: 0.2 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
+        { t: 0.24, pose: P({ lean: -0.1, head: -0.05, armUB: 0.9, armLB: 1.9, armUF: -0.35, armLF: 1.1, legUB: -0.24, legUF: 0.3, yaw: -0.2, armUFD: -1 }) },
+        { t: 0.46, pose: P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.62, armLF: 1.05, legUB: -0.46, legUF: 0.5, yaw: 0.26, armUFD: 0.45, armLFD: 0.2 }) },
+        { t: 0.6, pose: P({ lean: 0.34, head: 0.1, armUB: 0.95, armLB: 1.95, armUF: 1.62, armLF: 1.05, legUB: -0.46, legUF: 0.5, yaw: 0.26, armUFD: 0.45, armLFD: 0.2 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     uppercut: {
       dur: 0.62, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.3, pose: P({ lean: 0.34, head: 0.08, armUB: 0.1, armLB: 2.35, armUF: 0.85, armLF: 1.9, legUB: 0.4, legLB: -0.95, legUF: 0.45, legLF: -1, yaw: -0.15, armUBD: -0.75 }) },
         { t: 0.56, pose: P({ lean: 0.02, head: 0.16, armUB: 1.95, armLB: 0.22, armUF: 0.75, armLF: 1.85, legUB: -0.1, legUF: 0.16, yaw: 0.06, armUBD: -0.3 }) },
         { t: 0.72, pose: P({ lean: 0.02, head: 0.16, armUB: 1.95, armLB: 0.22, armUF: 0.75, armLF: 1.85, legUB: -0.1, legUF: 0.16, yaw: 0.06, armUBD: -0.3 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     elbow: {
       dur: 0.44, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.28, pose: P({ lean: 0.14, head: -0.04, armUB: 1, armLB: 2.1, armUF: 0.55, armLF: 2.4, legUB: -0.26, legUF: 0.32, yaw: -0.14, armUFD: -0.6 }) },
         { t: 0.5, pose: P({ lean: 0.46, head: 0.08, armUB: 0.95, armLB: 2.05, armUF: 1.5, armLF: 2.42, legUB: -0.5, legUF: 0.5, yaw: 0.12, armUFD: -0.12 }) },
         { t: 0.66, pose: P({ lean: 0.46, head: 0.08, armUB: 0.95, armLB: 2.05, armUF: 1.5, armLF: 2.42, legUB: -0.5, legUF: 0.5, yaw: 0.12, armUFD: -0.12 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     snapKick: {
       dur: 0.46, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.3, pose: P({ lean: -0.1, head: -0.04, armUB: 0.7, armLB: 1.6, armUF: 0.95, armLF: 1.4, legUB: 0.1, legUF: 0.92, legLF: -1.6 }) },
-        { t: 0.5, pose: P({ lean: -0.22, head: -0.05, armUB: 0.35, armLB: 1.3, armUF: 0.6, armLF: 1.15, legUB: 0.14, legUF: 1.26, legLF: 0.05 }) },
-        { t: 0.64, pose: P({ lean: -0.22, head: -0.05, armUB: 0.35, armLB: 1.3, armUF: 0.6, armLF: 1.15, legUB: 0.14, legUF: 1.26, legLF: 0.05 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0.5, pose: P({ lean: -0.22, head: -0.05, armUB: 0.35, armLB: 1.3, armUF: 0.6, armLF: 1.15, legUB: 0.14, legUF: 1.26, legLF: 0 }) },
+        { t: 0.64, pose: P({ lean: -0.22, head: -0.05, armUB: 0.35, armLB: 1.3, armUF: 0.6, armLF: 1.15, legUB: 0.14, legUF: 1.26, legLF: 0 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     pushKick: {
       dur: 0.54, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.3, pose: P({ lean: -0.12, head: -0.03, armUB: 0.8, armLB: 1.5, armUF: 1, armLF: 1.3, legUB: 0.1, legUF: 0.95, legLF: -1.4 }) },
-        { t: 0.52, pose: P({ lean: -0.32, head: -0.04, armUB: 0.2, armLB: 1.1, armUF: 0.4, armLF: 1, legUB: 0.14, legUF: 1.36, legLF: 0.06 }) },
-        { t: 0.68, pose: P({ lean: -0.32, head: -0.04, armUB: 0.2, armLB: 1.1, armUF: 0.4, armLF: 1, legUB: 0.14, legUF: 1.36, legLF: 0.06 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0.52, pose: P({ lean: -0.32, head: -0.04, armUB: 0.2, armLB: 1.1, armUF: 0.4, armLF: 1, legUB: 0.14, legUF: 1.36, legLF: 0 }) },
+        { t: 0.68, pose: P({ lean: -0.32, head: -0.04, armUB: 0.2, armLB: 1.1, armUF: 0.4, armLF: 1, legUB: 0.14, legUF: 1.36, legLF: 0 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     roundKick: {
       dur: 0.6, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.32, pose: P({ lean: -0.24, head: -0.04, armUB: 0.55, armLB: 1.4, armUF: 0.9, armLF: 1.25, legUB: 0.1, legUF: 1.5, legLF: -1, legUFD: -0.35 }) },
-        { t: 0.54, pose: P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legUF: 1.95, legLF: 0.05, legUFD: 0.35 }) },
-        { t: 0.7, pose: P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legUF: 1.95, legLF: 0.05, legUFD: 0.35 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0.54, pose: P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legUF: 1.95, legLF: 0, legUFD: 0.35 }) },
+        { t: 0.7, pose: P({ lean: -0.5, head: -0.1, armUB: -0.35, armLB: 0.9, armUF: 0.3, armLF: 1.2, legUB: 0.12, legUF: 1.95, legLF: 0, legUFD: 0.35 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     sideKick: {
       dur: 0.6, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.32, pose: P({ lean: -0.36, head: -0.05, armUB: 0.4, armLB: 1.3, armUF: 0.6, armLF: 1.2, legUB: 0.1, legUF: 1.1, legLF: -1.3 }) },
-        { t: 0.54, pose: P({ lean: -0.6, head: -0.08, armUB: -0.8, armLB: 0.6, armUF: -0.95, armLF: 0.7, legUB: 0.12, legUF: 1.56, legLF: 0.02 }) },
-        { t: 0.7, pose: P({ lean: -0.6, head: -0.08, armUB: -0.8, armLB: 0.6, armUF: -0.95, armLF: 0.7, legUB: 0.12, legUF: 1.56, legLF: 0.02 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0.54, pose: P({ lean: -0.6, head: -0.08, armUB: -0.8, armLB: 0.6, armUF: -0.95, armLF: 0.7, legUB: 0.12, legUF: 1.56, legLF: 0 }) },
+        { t: 0.7, pose: P({ lean: -0.6, head: -0.08, armUB: -0.8, armLB: 0.6, armUF: -0.95, armLF: 0.7, legUB: 0.12, legUF: 1.56, legLF: 0 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     flyKick: {
       dur: 0.82, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.18, pose: P({ lean: 0.34, head: -0.1, armUB: -0.6, armLB: 0.8, armUF: -0.7, armLF: 0.9, legUB: 0.62, legLB: -1.35, legUF: 0.58, legLF: -1.6 }) },
         { t: 0.44, pose: P({ lean: -0.08, head: 0.06, armUB: 0.9, armLB: 1.1, armUF: 1.1, armLF: 1, legUB: -0.2, legUF: 1.52, lift: 22 }) },
         { t: 0.62, pose: P({ lean: -0.08, head: 0.06, armUB: 0.9, armLB: 1.1, armUF: 1.1, armLF: 1, legUB: -0.2, legUF: 1.52, lift: 22 }) },
         { t: 0.82, pose: P({ lean: 0.4, head: -0.14, armUB: -0.5, armLB: 0.95, armUF: -0.6, armLF: 1, legUB: 0.62, legLB: -1.3, legUF: 0.5, legLF: -1.4 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     slash: {
-      dur: 0.7, loop: false,
+      dur: 0.52, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
-        { t: 0.22, pose: P({ lean: 0.3, armUB: 1.7, armLB: 0.1, armUF: 1.4, armLF: 0.3, legUB: -0.5, legUF: 0.6 }) },
-        { t: 0.38, pose: P({ lean: 0.3, armUB: 1.7, armLB: 0.1, armUF: 1.4, armLF: 0.3, legUB: -0.5, legUF: 0.6 }) },
-        { t: 0.56, pose: P({ lean: 0.35, armUB: 1.2, armLB: 0.4, armUF: 1.75, armLF: 0.05, legUB: -0.55, legUF: 0.65 }) },
-        { t: 0.7, pose: P({ lean: 0.35, armUB: 1.2, armLB: 0.4, armUF: 1.75, armLF: 0.05, legUB: -0.55, legUF: 0.65 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
+        { t: 0.16, pose: P({ lean: 0.3, armUB: 1.7, armLB: 0.1, armUF: 1.4, armLF: 0.3, legUB: -0.5, legUF: 0.6 }) },
+        { t: 0.28, pose: P({ lean: 0.3, armUB: 1.7, armLB: 0.1, armUF: 1.4, armLF: 0.3, legUB: -0.5, legUF: 0.6 }) },
+        { t: 0.46, pose: P({ lean: 0.35, armUB: 1.2, armLB: 0.4, armUF: 1.75, armLF: 0.05, legUB: -0.55, legUF: 0.65 }) },
+        { t: 0.6, pose: P({ lean: 0.35, armUB: 1.2, armLB: 0.4, armUF: 1.75, armLF: 0.05, legUB: -0.55, legUF: 0.65 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     knee: {
       dur: 0.5, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.24, pose: P({ lean: -0.14, head: -0.04, armUB: 0.8, armLB: 1.7, armUF: 0.9, armLF: 1.5, legUB: 0.1, legUF: 1.35, legLF: -2.1 }) },
         { t: 0.42, pose: P({ lean: 0.34, head: 0.02, armUB: 1, armLB: 1.9, armUF: 1, armLF: 1.8, legUB: -0.3, legUF: 1.5, legLF: -2.3 }) },
         { t: 0.58, pose: P({ lean: 0.34, head: 0.02, armUB: 1, armLB: 1.9, armUF: 1, armLF: 1.8, legUB: -0.3, legUF: 1.5, legLF: -2.3 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
     scissorKick: {
       dur: 0.92, loop: false,
       keys: [
-        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 0, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
         { t: 0.16, pose: P({ lean: 0.36, head: -0.1, armUB: -0.55, armLB: 0.85, armUF: -0.65, armLF: 0.95, legUB: 0.6, legLB: -1.3, legUF: 0.56, legLF: -1.5 }) },
         { t: 0.38, pose: P({ lean: 0.05, head: 0.05, armUB: 0.9, armLB: 1.2, armUF: 1.2, armLF: 1.1, legUB: -0.55, legUF: 1.45, lift: 30 }) },
         { t: 0.58, pose: P({ lean: 0.05, head: 0.05, armUB: 1.2, armLB: 1.1, armUF: 0.9, armLF: 1.2, legUB: 1.35, legUF: -0.35, lift: 30 }) },
         { t: 0.78, pose: P({ lean: 0.42, head: -0.14, armUB: -0.5, armLB: 0.9, armUF: -0.6, armLF: 1, legUB: 0.66, legLB: -1.35, legUF: 0.6, legLF: -1.45 }) },
-        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0.12 }) },
+        { t: 1, pose: P({ lean: 0.15, head: -0.06, armUB: 1, armLB: 1.9, armUF: 1.08, armLF: 1.85, legUB: -0.3, legUF: 0.34, legLF: 0 }) },
       ],
     },
   },

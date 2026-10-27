@@ -16,7 +16,8 @@ export const KIT: HeroKit = {
     jab: {
       part: 'handF',
       hits: [
-        { at: 0.48, dmg: [7, 12], reach: 1, knock: 150 },
+        // 弓击：用弓杆戳/横扫（tip 描述弓杆伸出长度，渲染层据此搭箭）
+        { at: 0.48, dmg: [7, 12], reach: 1, knock: 150, tip: 10, w: 2.6 },
       ],
       hitstop: 0.045,
       react: 'light',

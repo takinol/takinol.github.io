@@ -88,11 +88,42 @@ const SLOTS = Array.from({ length: 15 }, (_, i) => i);
       color: #222;
       border-top: 1px solid rgba(0, 0, 0, 0.08);
     }
+    /* 专属能力徽标：右下角小角标，悬停看说明 */
+    .roster-card {
+      position: relative;
+    }
+    .roster-ability {
+      position: absolute;
+      right: 8px;
+      bottom: 40px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #7a5b00;
+      background: #ffe9a8;
+      border: 1px solid #e8c96a;
+      border-radius: 999px;
+      cursor: help;
+      pointer-events: auto;
+    }
   </style>
 
   <script>
+    import { HERO_ABILITY } from '../scripts/fight';
+
     // 角色名从 iframe 的 document.title 读（pose 页写了「名字 · pose」），名单永远和引擎同步
     const cards = document.querySelectorAll<HTMLAnchorElement>('.roster-card');
+    // 专属能力徽标：从模块直接读 HERO_ABILITY（kitId = 卡片编号），新增能力自动出现
+    for (const card of cards) {
+      const idx = Number(card.dataset.who ?? -1);
+      const ab = HERO_ABILITY[idx];
+      if (!ab) continue;
+      const tag = document.createElement('span');
+      tag.className = 'roster-ability';
+      tag.textContent = ab.name;
+      tag.title = ab.desc;
+      card.appendChild(tag);
+    }
     for (const card of cards) {
       const frame = card.querySelector('iframe');
       const label = card.querySelector('.roster-name');
